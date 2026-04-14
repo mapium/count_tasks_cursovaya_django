@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сотрудники | Kanban Enterprise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/main.css">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand__logo">K</div>
+                <div class="brand__text">
+                    <h1>Kanban Enterprise</h1>
+                    <p>Учет производственных задач</p>
+                </div>
+            </div>
+            <nav class="nav">
+                <a class="nav__link" href="dashboard.html"><span>Доска задач</span></a>
+                <a class="nav__link" href="tasks-create.html"><span>Создать/назначить задачу</span></a>
+                <a class="nav__link is-active" href="employees.html"><span>Сотрудники</span></a>
+                <a class="nav__link" href="reports.html"><span>Отчеты</span></a>
+            </nav>
+            <div class="sidebar__footer">
+                <p class="muted">Роль: <strong id="roleBadge">Администратор</strong></p>
+                <button class="btn btn--ghost btn--block" id="switchRoleBtn" type="button">Сменить роль (демо)</button>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar__left">
+                    <h2>Сотрудники и подразделения</h2>
+                    <p class="muted">Учет контингента сотрудников, прикрепление к подразделениям и нечеткий поиск</p>
+                </div>
+            </header>
+
+            <section class="content">
+                <section class="card">
+                    <div class="toolbar-row">
+                        <input class="input" id="employeeSearch" type="search" placeholder="Поиск по фамилии (нечеткий)">
+                        <select class="input input--select">
+                            <option value="">Все подразделения</option>
+                            <option value="production">Производство</option>
+                            <option value="sales">Отдел продаж</option>
+                            <option value="it">ИТ-отдел</option>
+                            <option value="hr">HR</option>
+                        </select>
+                        <button class="btn btn--primary" type="button">+ Добавить сотрудника</button>
+                    </div>
+                </section>
+
+                <section class="employee-grid">
+                    <article class="employee-card">
+                        <header><h4>Иванов Иван Иванович</h4><span class="tag tag--info">Производство</span></header>
+                        <p><strong>Тел:</strong> +7 (999) 123-45-67</p>
+                        <p><strong>Email:</strong> ivanov@company.ru</p>
+                        <p><strong>ИНН:</strong> 123456789012</p>
+                        <p><strong>СНИЛС:</strong> 123-456-789 00</p>
+                        <div class="employee-actions">
+                            <button class="btn btn--secondary" type="button">Редактировать</button>
+                            <button class="btn btn--danger" type="button">Удалить</button>
+                        </div>
+                    </article>
+
+                    <article class="employee-card">
+                        <header><h4>Петров Петр Петрович</h4><span class="tag tag--info">Отдел продаж</span></header>
+                        <p><strong>Тел:</strong> +7 (999) 111-22-33</p>
+                        <p><strong>Email:</strong> petrov@company.ru</p>
+                        <p><strong>ИНН:</strong> 987654321098</p>
+                        <p><strong>СНИЛС:</strong> 987-654-321 00</p>
+                        <div class="employee-actions">
+                            <button class="btn btn--secondary" type="button">Редактировать</button>
+                            <button class="btn btn--danger" type="button">Удалить</button>
+                        </div>
+                    </article>
+                </section>
+            </section>
+        </main>
+    </div>
+
+    <script src="./assets/api-client.js"></script>
+    <script src="./assets/app.js"></script>
+</body>
+</html>

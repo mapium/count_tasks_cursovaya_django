@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block head_extra %}
+{% endblock %}
+
+{% block title %}Сотрудники | Kanban Enterprise{% endblock %}
+{% block page_title %}Сотрудники и подразделения{% endblock %}
+{% block page_subtitle %}Учет контингента сотрудников, прикрепление к подразделениям и нечеткий поиск{% endblock %}
+
+{% block content %}
+{% if messages %}
+<section class="card" style="margin-bottom: 0;">
+    {% for message in messages %}
+    <p class="{% if 'error' in message.tags %}auth-error{% elif 'success' in message.tags %}muted{% else %}muted{% endif %}" style="margin: 0 0 8px;{% if 'success' in message.tags %} color: var(--success); font-weight: 600;{% endif %}">{{ message }}</p>
+    {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+    <form class="toolbar-row" method="get" action="{% url 'employees' %}">
+        <input class="input" name="q" type="search" placeholder="Поиск по фамилии (нечеткий)" value="{{ search_query }}">
+        <select class="input input--select" name="department">
+            <option value="">Все подразделения</option>
+            {% for did, dname in departments_options %}
+            <option value="{{ did }}"{% if selected_department == did|stringformat:"s" %} selected{% endif %}>{{ dname }}</option>
+            {% endfor %}
+            {% if has_employees_without_department %}
+            <option value="__none__"{% if selected_department == "__none__" %} selected{% endif %}>Без подразделения</option>
+            {% endif %}
+        </select>
+        <button class="btn btn--secondary" type="submit">Применить</button>
+        <a
+            class="btn btn--primary"
+            href="{% url 'employees' %}?mode=add&department={{ selected_department|urlencode }}&q={{ search_query|urlencode }}"
+        >+ Добавить сотрудника</a>
+    </form>
+</section>
+
+{% if form_mode %}
+<section class="card">
+    <div class="modal-dialog__head" style="padding: 0 0 12px;">
+        <h3>{% if form_mode == "add" %}Новый сотрудник{% else %}Редактирование сотрудника{% endif %}</h3>
+    </div>
+    <form
+        class="modal-dialog__body"
+        method="post"
+        action="{% if form_mode == 'add' %}{% url 'employee_create' %}{% else %}{% url 'employee_update' %}{% endif %}"
+    >
+        {% csrf_token %}
+        <input type="hidden" name="employee_id" value="{{ form_initial.employee_id }}">
+
+        <label class="field">
+            <span>Фамилия</span>
+            <input class="input" type="text" name="last_name" required value="{{ form_initial.last_name }}">
+        </label>
+        <label class="field">
+            <span>Имя</span>
+            <input class="input" type="text" name="first_name" required value="{{ form_initial.first_name }}">
+        </label>
+        <label class="field">
+            <span>Отчество</span>
+            <input class="input" type="text" name="middle_name" value="{{ form_initial.middle_name }}">
+        </label>
+        <label class="field">
+            <span>Телефон</span>
+            <input class="input" type="text" name="phone_number" value="{{ form_initial.phone_number }}">
+        </label>
+        <label class="field">
+            <span>Email</span>
+            <input class="input" type="email" name="email" required value="{{ form_initial.email }}">
+        </label>
+        <label class="field field--full">
+            <span>Паспортные данные (не менее 10 символов)</span>
+            <input class="input" type="text" name="passport_data" required minlength="10" value="{{ form_initial.passport_data }}">
+        </label>
+        <label class="field">
+            <span>ИНН (12+ символов, необязательно)</span>
+            <input class="input" type="text" name="inn" minlength="12" value="{{ form_initial.inn }}">
+        </label>
+        <label class="field">
+            <span>СНИЛС (11+ символов, необязательно)</span>
+            <input class="input" type="text" name="snils" minlength="11" value="{{ form_initial.snils }}">
+        </label>
+        <label class="field field--full">
+            <span>Подразделение</span>
+            <select class="input input--select" name="department_id"{% if departments_options %} required{% endif %}>
+                {% for did, dname in departments_options %}
+                <option value="{{ did }}"{% if form_initial.department_id == did|stringformat:"s" %} selected{% endif %}>{{ dname }}</option>
+                {% empty %}
+                <option value="">— нет справочника отделов —</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="auth-check field--full">
+            <input type="checkbox" name="is_active"{% if form_initial.is_active %} checked{% endif %}>
+            <span>Сотрудник активен</span>
+        </label>
+
+        <div class="modal-dialog__footer">
+            <a
+                class="btn btn--secondary"
+                href="{% url 'employees' %}?department={{ selected_department|urlencode }}&q={{ search_query|urlencode }}"
+            >Отмена</a>
+            <button type="submit" class="btn btn--primary">{% if form_mode == "add" %}Добавить{% else %}Сохранить{% endif %}</button>
+        </div>
+    </form>
+</section>
+{% endif %}
+
+{% if api_error %}
+<section class="card auth-error" style="margin-bottom: 0;">
+    <strong>Не удалось загрузить сотрудников.</strong>
+    <p class="muted" style="margin: 8px 0 0;">{{ api_error }}</p>
+    <p class="muted" style="margin: 8px 0 0;">Войдите под учётной записью администратора — endpoint требует прав admin.</p>
+</section>
+{% endif %}
+{% if departments_error and not api_error %}
+<section class="card" style="margin-bottom: 0; border-color: #fcd34d;">
+    <p class="muted" style="margin: 0;">Названия отделов не подгрузились: {{ departments_error }}. Показан только номер отдела.</p>
+</section>
+{% endif %}
+
+{% for group in employees_by_department %}
+<section
+    class="employee-department-block"
+    data-department-id="{% if group.id is not None %}{{ group.id }}{% else %}__none__{% endif %}"
+>
+    <h3 class="employee-department-block__title">{{ group.name }}</h3>
+    <div class="employee-grid">
+        {% for employee in group.employees %}
+        <article class="employee-card">
+            <header>
+                <h4>{{ employee.last_name }} {{ employee.first_name }}{% if employee.middle_name %} {{ employee.middle_name }}{% endif %}</h4>
+                <span class="tag tag--info">{% if employee.department_name %}{{ employee.department_name }}{% else %}Отдел №{{ employee.department_id }}{% endif %}</span>
+            </header>
+            <p><strong>Тел:</strong> {{ employee.phone_number|default:"—" }}</p>
+            <p><strong>Email:</strong> {{ employee.email }}</p>
+            <p><strong>ИНН:</strong> {{ employee.inn|default:"—" }}</p>
+            <p><strong>СНИЛС:</strong> {{ employee.snils|default:"—" }}</p>
+            <div class="employee-actions">
+                <a
+                    class="btn btn--secondary"
+                    href="{% url 'employees' %}?mode=edit&edit_id={{ employee.id }}&department={{ selected_department|urlencode }}&q={{ search_query|urlencode }}"
+                >Редактировать</a>
+                <button class="btn btn--danger" type="button">Удалить</button>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% empty %}
+{% if not api_error %}
+<div class="employee-grid">
+    <article class="employee-card employee-card--placeholder">
+        <h4>Список пуст</h4>
+        <p class="muted">Сотрудники не найдены или данные ещё не загружены.</p>
+    </article>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+{% endblock %}

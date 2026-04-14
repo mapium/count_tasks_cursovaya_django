@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Отчеты | Kanban Enterprise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/main.css">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand__logo">K</div>
+                <div class="brand__text">
+                    <h1>Kanban Enterprise</h1>
+                    <p>Учет производственных задач</p>
+                </div>
+            </div>
+            <nav class="nav">
+                <a class="nav__link" href="dashboard.html"><span>Доска задач</span></a>
+                <a class="nav__link" href="tasks-create.html"><span>Создать/назначить задачу</span></a>
+                <a class="nav__link" href="employees.html"><span>Сотрудники</span></a>
+                <a class="nav__link is-active" href="reports.html"><span>Отчеты</span></a>
+            </nav>
+            <div class="sidebar__footer">
+                <p class="muted">Роль: <strong id="roleBadge">Администратор</strong></p>
+                <button class="btn btn--ghost btn--block" id="switchRoleBtn" type="button">Сменить роль (демо)</button>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar__left">
+                    <h2>Отчеты и аналитика</h2>
+                    <p class="muted">Формирование отчетов по задачам и численности сотрудников предприятия</p>
+                </div>
+            </header>
+
+            <section class="content">
+                <div class="reports-layout">
+                    <section class="card">
+                        <h3>Отчет по задачам подразделения</h3>
+                        <p class="muted">По выполнению задач сотрудниками за месяц и за год.</p>
+                        <div class="toolbar-row">
+                            <select class="input input--select">
+                                <option>Выберите подразделение</option>
+                                <option>Производство</option>
+                                <option>Отдел продаж</option>
+                                <option>ИТ-отдел</option>
+                            </select>
+                            <select class="input input--select">
+                                <option>Период: месяц</option>
+                                <option>Период: год</option>
+                            </select>
+                        </div>
+                        <div class="toolbar-row">
+                            <button class="btn btn--primary" type="button">Сформировать</button>
+                            <button class="btn btn--secondary" type="button">Скачать Word</button>
+                            <button class="btn btn--secondary" type="button">Скачать Excel</button>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <h3>Отчет по численности сотрудников</h3>
+                        <p class="muted">Общее количество сотрудников и распределение по подразделениям.</p>
+                        <div class="toolbar-row">
+                            <button class="btn btn--primary" type="button">Сформировать</button>
+                            <button class="btn btn--secondary" type="button">Скачать Word</button>
+                            <button class="btn btn--secondary" type="button">Скачать Excel</button>
+                        </div>
+                    </section>
+
+                    <section class="card chart-placeholder">
+                        <h3>Диаграмма выполнения задач сотрудника (помесячно)</h3>
+                        <p class="muted">Здесь будет подключение Chart.js / ECharts после интеграции backend API.</p>
+                        <div class="chart-mock">График выполнения %</div>
+                    </section>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="./assets/api-client.js"></script>
+    <script src="./assets/app.js"></script>
+</body>
+</html>

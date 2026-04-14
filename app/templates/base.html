@@ -1,0 +1,70 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Kaban Enterprise{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand__logo">K</div>
+                <div class="brand__text">
+                    <h1>Kaban Enterprise</h1>
+                    <p>Учет производственных задач</p>
+                </div>
+            </div>
+
+            <nav class="nav">
+                <a class="nav__link {% if active_page == 'dashboard' %}is-active{% endif %}" href="{% url 'dashboard' %}">
+                    <span>Доска задач</span>
+                </a>
+                <a class="nav__link {% if active_page == 'tasks_create' %}is-active{% endif %}" href="{% url 'task_create' %}">
+                    <span>Создать/назначить задачу</span>
+                </a>
+                <a class="nav__link {% if active_page == 'employees' %}is-active{% endif %}" href="{% url 'employees' %}">
+                    <span>Сотрудники</span>
+                </a>
+                <a class="nav__link {% if active_page == 'reports' %}is-active{% endif %}" href="{% url 'reports' %}">
+                    <span>Отчеты</span>
+                </a>
+            </nav>
+
+            <div class="sidebar__footer">
+                <p class="muted">Текущий пользователь<strong id="roleBadge">Администратор</strong></p>
+                <button class="btn btn--ghost btn--block logout--btn" type="button"><a href="{% url 'auth' %}">Выйти</a></button>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar__left">
+                    <h2>{% block page_title %}Панель управления{% endblock %}</h2>
+                    <p class="muted">{% block page_subtitle %}Современная вёрстка под Django + API{% endblock %}</p>
+                </div>
+                <div class="topbar__right">
+                    <input class="input" type="search" placeholder="Поиск сотрудника или задачи">
+                    <a class="btn btn--primary" href="#">+ Создать</a>
+                </div>
+            </header>
+
+            <section class="content">
+                {% block content %}{% endblock %}
+            </section>
+        </main>
+    </div>
+
+    {% block overlay %}{% endblock %}
+
+    <script src="{% static 'js/api-client.js' %}"></script>
+    <script src="{% static 'js/app.js' %}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

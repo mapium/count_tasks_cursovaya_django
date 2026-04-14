@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanban-доска | Kanban Enterprise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/main.css">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand__logo">K</div>
+                <div class="brand__text">
+                    <h1>Kanban Enterprise</h1>
+                    <p>Учет производственных задач</p>
+                </div>
+            </div>
+
+            <nav class="nav">
+                <a class="nav__link is-active" href="dashboard.html"><span>Доска задач</span></a>
+                <a class="nav__link" href="tasks-create.html"><span>Создать/назначить задачу</span></a>
+                <a class="nav__link" href="employees.html"><span>Сотрудники</span></a>
+                <a class="nav__link" href="reports.html"><span>Отчеты</span></a>
+            </nav>
+
+            <div class="sidebar__footer">
+                <p class="muted">Роль: <strong id="roleBadge">Администратор</strong></p>
+                <button class="btn btn--ghost btn--block" id="switchRoleBtn" type="button">Сменить роль (демо)</button>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar__left">
+                    <h2>Kanban-доска задач</h2>
+                    <p class="muted">Контроль выполнения производственных задач по сотрудникам и подразделениям</p>
+                </div>
+                <div class="topbar__right">
+                    <input class="input" type="search" placeholder="Поиск сотрудника или задачи">
+                    <a class="btn btn--primary" href="tasks-create.html">+ Создать</a>
+                </div>
+            </header>
+
+            <section class="content">
+                <div class="stats-grid">
+                    <article class="stat-card"><p class="muted">Всего задач</p><h3>128</h3></article>
+                    <article class="stat-card"><p class="muted">Выполнено за месяц</p><h3>76</h3></article>
+                    <article class="stat-card"><p class="muted">Просрочено</p><h3 class="danger">12</h3></article>
+                    <article class="stat-card"><p class="muted">Сотрудников в работе</p><h3>43</h3></article>
+                </div>
+
+                <section class="board-toolbar card">
+                    <div class="toolbar-row">
+                        <select class="input input--select">
+                            <option value="">Все подразделения</option>
+                            <option value="production">Производство</option>
+                            <option value="sales">Отдел продаж</option>
+                            <option value="it">ИТ-отдел</option>
+                        </select>
+                        <select class="input input--select">
+                            <option value="month">Текущий месяц</option>
+                            <option value="year">Текущий год</option>
+                        </select>
+                        <button class="btn btn--secondary" type="button">Экспорт в Excel</button>
+                        <button class="btn btn--secondary" type="button">Экспорт в Word</button>
+                    </div>
+                </section>
+
+                <section class="kanban" id="kanbanBoard">
+                    <article class="kanban-column" data-status="planned">
+                        <header class="kanban-column__head"><h4>Запланировано</h4><span class="badge">14</span></header>
+                        <div class="kanban-tasks">
+                            <div class="task-card" draggable="true"><h5>Подготовить отчет по линии А</h5><p>Назначено: Иванов И.И.</p><div class="task-meta"><span>Срок: 15.04.2026</span><span class="tag tag--warning">Важно</span></div></div>
+                            <div class="task-card" draggable="true"><h5>Проверка оборудования участка №2</h5><p>Назначено: Петров П.П.</p><div class="task-meta"><span>Срок: 18.04.2026</span><span class="tag">План</span></div></div>
+                        </div>
+                    </article>
+
+                    <article class="kanban-column" data-status="in_progress">
+                        <header class="kanban-column__head"><h4>В работе</h4><span class="badge badge--purple">27</span></header>
+                        <div class="kanban-tasks">
+                            <div class="task-card" draggable="true"><h5>Инвентаризация склада</h5><p>Назначено: Сидоров С.С.</p><div class="task-meta"><span>Срок: 12.04.2026</span><span class="tag tag--info">Производство</span></div></div>
+                        </div>
+                    </article>
+
+                    <article class="kanban-column" data-status="done">
+                        <header class="kanban-column__head"><h4>Выполнено</h4><span class="badge badge--green">76</span></header>
+                        <div class="kanban-tasks">
+                            <div class="task-card" draggable="true"><h5>Согласование графика смен</h5><p>Исполнитель: Алексеева М.А.</p><div class="task-meta"><span>Закрыта: 05.04.2026</span><span class="tag tag--success">Готово</span></div></div>
+                        </div>
+                    </article>
+
+                    <article class="kanban-column" data-status="overdue">
+                        <header class="kanban-column__head"><h4>Просрочено</h4><span class="badge badge--red">12</span></header>
+                        <div class="kanban-tasks">
+                            <div class="task-card" draggable="true"><h5>Обновление регламента ТБ</h5><p>Исполнитель: Кузнецов Д.Н.</p><div class="task-meta"><span>Срок: 01.04.2026</span><span class="tag tag--danger">Просрочка</span></div></div>
+                        </div>
+                    </article>
+                </section>
+            </section>
+        </main>
+    </div>
+
+    <script src="./assets/api-client.js"></script>
+    <script src="./assets/app.js"></script>
+    <script src="./assets/kanban.js"></script>
+</body>
+</html>

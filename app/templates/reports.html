@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Отчеты | Kanban Enterprise{% endblock %}
+{% block page_title %}Отчеты и аналитика{% endblock %}
+{% block page_subtitle %}Формирование отчетов по задачам и численности сотрудников предприятия{% endblock %}
+
+{% block content %}
+<div class="reports-layout">
+    <section class="card">
+        <h3>Отчет по задачам подразделения</h3>
+        <p class="muted">По выполнению задач сотрудниками за месяц и за год.</p>
+        <div class="toolbar-row">
+            <select class="input input--select">
+                <option>Выберите подразделение</option>
+                <option>Производство</option>
+                <option>Отдел продаж</option>
+                <option>ИТ-отдел</option>
+            </select>
+            <select class="input input--select">
+                <option>Период: месяц</option>
+                <option>Период: год</option>
+            </select>
+        </div>
+        <div class="toolbar-row">
+            <button class="btn btn--primary" type="button">Сформировать</button>
+            <button class="btn btn--secondary" type="button">Скачать Word</button>
+            <button class="btn btn--secondary" type="button">Скачать Excel</button>
+        </div>
+    </section>
+
+    <section class="card">
+        <h3>Отчет по численности сотрудников</h3>
+        <p class="muted">Общее количество сотрудников и распределение по подразделениям.</p>
+        <div class="toolbar-row">
+            <button class="btn btn--primary" type="button">Сформировать</button>
+            <button class="btn btn--secondary" type="button">Скачать Word</button>
+            <button class="btn btn--secondary" type="button">Скачать Excel</button>
+        </div>
+    </section>
+
+    <section class="card chart-placeholder">
+        <h3>Диаграмма выполнения задач сотрудника (помесячно)</h3>
+        <p class="muted">Здесь будет подключение Chart.js/Apache ECharts после интеграции backend API.</p>
+        <div class="chart-mock">График выполнения %</div>
+    </section>
+</div>
+{% endblock %}

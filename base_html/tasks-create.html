@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Создание и назначение задач | Kanban Enterprise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./assets/main.css">
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand__logo">K</div>
+                <div class="brand__text">
+                    <h1>Kanban Enterprise</h1>
+                    <p>Учет производственных задач</p>
+                </div>
+            </div>
+            <nav class="nav">
+                <a class="nav__link" href="dashboard.html"><span>Доска задач</span></a>
+                <a class="nav__link is-active" href="tasks-create.html"><span>Создать/назначить задачу</span></a>
+                <a class="nav__link" href="employees.html"><span>Сотрудники</span></a>
+                <a class="nav__link" href="reports.html"><span>Отчеты</span></a>
+            </nav>
+            <div class="sidebar__footer">
+                <p class="muted">Роль: <strong id="roleBadge">Руководитель подразделения</strong></p>
+                <button class="btn btn--ghost btn--block" id="switchRoleBtn" type="button">Сменить роль (демо)</button>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar__left">
+                    <h2>Создание и назначение задачи</h2>
+                    <p class="muted">Форма постановки производственной задачи и выбора исполнителя</p>
+                </div>
+            </header>
+
+            <section class="content">
+                <section class="card">
+                    <h3>Новая задача</h3>
+                    <form class="form-grid">
+                        <label class="field">
+                            <span>Название задачи</span>
+                            <input class="input" type="text" placeholder="Например: Подготовить отчет по смене">
+                        </label>
+
+                        <label class="field">
+                            <span>Подразделение</span>
+                            <select class="input input--select">
+                                <option>Производство</option>
+                                <option>Отдел продаж</option>
+                                <option>ИТ-отдел</option>
+                            </select>
+                        </label>
+
+                        <label class="field">
+                            <span>Исполнитель</span>
+                            <select class="input input--select">
+                                <option>Иванов Иван Иванович</option>
+                                <option>Петров Петр Петрович</option>
+                                <option>Сидоров Сергей Сергеевич</option>
+                            </select>
+                        </label>
+
+                        <label class="field">
+                            <span>Приоритет</span>
+                            <select class="input input--select">
+                                <option>Низкий</option>
+                                <option selected>Средний</option>
+                                <option>Высокий</option>
+                                <option>Критический</option>
+                            </select>
+                        </label>
+
+                        <label class="field">
+                            <span>Дата начала</span>
+                            <input class="input" type="date">
+                        </label>
+
+                        <label class="field">
+                            <span>Срок выполнения</span>
+                            <input class="input" type="date">
+                        </label>
+
+                        <label class="field field--full">
+                            <span>Описание задачи</span>
+                            <textarea class="input textarea" rows="5" placeholder="Опишите требуемый результат, критерии выполнения и ограничения"></textarea>
+                        </label>
+
+                        <div class="toolbar-row field--full">
+                            <button class="btn btn--primary" type="button">Назначить задачу</button>
+                            <button class="btn btn--secondary" type="button">Сохранить как черновик</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h3>Недавно назначенные задачи</h3>
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Задача</th>
+                                    <th>Исполнитель</th>
+                                    <th>Срок</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Инвентаризация склада</td>
+                                    <td>Сидоров С.С.</td>
+                                    <td>12.04.2026</td>
+                                    <td><span class="tag tag--info">В работе</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Подготовить отчет по линии А</td>
+                                    <td>Иванов И.И.</td>
+                                    <td>15.04.2026</td>
+                                    <td><span class="tag tag--warning">Запланировано</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+        </main>
+    </div>
+
+    <script src="./assets/api-client.js"></script>
+    <script src="./assets/app.js"></script>
+</body>
+</html>

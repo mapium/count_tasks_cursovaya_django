@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Авторизация | Kanban Enterprise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+    <div class="auth-layout">
+        <section class="auth-side">
+            <div class="brand">
+                <div class="brand__logo">K</div>
+                <div class="brand__text">
+                    <h1>Kanban Enterprise</h1>
+                    <p>Учет производственных задач</p>
+                </div>
+            </div>
+            <h2>Контроль задач сотрудников в одном месте</h2>
+            <p>Назначайте задачи, отслеживайте выполнение, анализируйте просрочки и формируйте отчеты по отделам.</p>
+            <ul>
+                <li>Роли: администратор, руководитель, работник</li>
+                <li>Kanban-доска и назначение задач</li>
+                <li>Отчеты за месяц и год</li>
+            </ul>
+        </section>
+
+        <section class="auth-card">
+            <h3>Вход в систему</h3>
+            <p class="muted">Введите логин и пароль сотрудника</p>
+
+            {% if error %}
+            <p class="auth-error" role="alert">{{ error }}{% if error_message %} — {{ error_message }}{% endif %}</p>
+            {% endif %}
+
+            <form class="auth-form" method="post" action="{% url 'auth' %}">
+                {% csrf_token %}
+                <label class="field">
+                    <span>Логин / Email</span>
+                    <input class="input" type="text" placeholder="name@company.ru" name="username">
+                </label>
+                <label class="field">
+                    <span>Пароль</span>
+                    <input class="input" type="password" placeholder="••••••••" name="password">
+                </label>
+                <label class="auth-check">
+                    <input type="checkbox">
+                    <span>Запомнить меня</span>
+                </label>
+
+                <button class="btn btn--primary btn--block" type="submit">Войти</button>
+                <a class="auth-link" href="{% url 'dashboard' %}">Войти без авторизации (демо)</a>
+            </form>
+        </section>
+    </div>
+
+    <script src="{% static 'js/app.js' %}"></script>
+</body>
+</html>
