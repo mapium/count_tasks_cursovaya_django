@@ -77,3 +77,17 @@ class EmployeeController:
             )
         except requests.RequestException:
             return None
+
+    @staticmethod
+    def delete_employee(employee_id, access_token=None):
+        headers = {"Content-Type": "application/json"}
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
+        try:
+            return requests.delete(
+                f"{base_url}/api/v1/employees/{int(employee_id)}",
+                headers=headers,
+                timeout=30,
+            )
+        except requests.RequestException:
+            return None

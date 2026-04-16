@@ -143,7 +143,11 @@
                     class="btn btn--secondary"
                     href="{% url 'employees' %}?mode=edit&edit_id={{ employee.id }}&department={{ selected_department|urlencode }}&q={{ search_query|urlencode }}"
                 >Редактировать</a>
-                <button class="btn btn--danger" type="button">Удалить</button>
+                <form method="post" action="{% url 'employee_delete' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="employee_id" value="{{ employee.id }}">
+                    <button class="btn btn--danger" type="submit">Удалить</button>
+                </form>
             </div>
         </article>
         {% endfor %}

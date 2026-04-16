@@ -5,91 +5,107 @@
 {% block page_subtitle %}Форма постановки производственной задачи и выбора исполнителя{% endblock %}
 
 {% block content %}
+{% if messages %}
+<section class="card" style="margin-bottom: 0;">
+    {% for message in messages %}
+    <p class="{% if 'error' in message.tags %}auth-error{% elif 'success' in message.tags %}muted{% else %}muted{% endif %}" style="margin: 0 0 8px;{% if 'success' in message.tags %} color: var(--success); font-weight: 600;{% endif %}">
+        {{ message }}
+    </p>
+    {% endfor %}
+</section>
+{% endif %}
+
 <section class="card">
     <h3>Новая задача</h3>
-    <form class="form-grid">
+    <form class="form-grid" method="post" action="{% url 'task_create' %}">
+        {% csrf_token %}
         <label class="field">
             <span>Название задачи</span>
-            <input class="input" type="text" placeholder="Например: Подготовить отчет по смене">
+            <input class="input" type="text" name="title" required placeholder="Например: Подготовить отчет по смене" value="{{ form_data.title|default:'' }}">
         </label>
 
         <label class="field">
-            <span>Подразделение</span>
-            <select class="input input--select">
-                <option>Производство</option>
-                <option>Отдел продаж</option>
-                <option>ИТ-отдел</option>
+            <span>Создатель задачи</span>
+            <select class="input input--select" name="creator_id">
+                <option value="">Не выбран</option>
+                {% for eid, ename in employees_options %}
+                <option value="{{ eid }}"{% if form_data.creator_id == eid|stringformat:"s" %} selected{% endif %}>{{ ename }}</option>
+                {% endfor %}
             </select>
         </label>
 
         <label class="field">
             <span>Исполнитель</span>
-            <select class="input input--select">
-                <option>Иванов Иван Иванович</option>
-                <option>Петров Петр Петрович</option>
-                <option>Сидоров Сергей Сергеевич</option>
+            <select class="input input--select" name="assignee_id">
+                <option value="">Не выбран</option>
+                {% for eid, ename in employees_options %}
+                <option value="{{ eid }}"{% if form_data.assignee_id == eid|stringformat:"s" %} selected{% endif %}>{{ ename }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <label class="field">
+            <span>Подразделение</span>
+            <select class="input input--select" name="department_id">
+                <option value="">Не выбрано</option>
+                {% for did, dname in departments_options %}
+                <option value="{{ did }}"{% if form_data.department_id == did|stringformat:"s" %} selected{% endif %}>{{ dname }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <label class="field">
+            <span>Статус</span>
+            <select class="input input--select" name="status">
+                <option value=""{% if not form_data.status %} selected{% endif %}>Не указан</option>
+                <option value="planned"{% if form_data.status == "planned" %} selected{% endif %}>Запланировано</option>
+                <option value="in_progress"{% if form_data.status == "in_progress" %} selected{% endif %}>В работе</option>
+                <option value="done"{% if form_data.status == "done" %} selected{% endif %}>Выполнено</option>
+                <option value="overdue"{% if form_data.status == "overdue" %} selected{% endif %}>Просрочено</option>
             </select>
         </label>
 
         <label class="field">
             <span>Приоритет</span>
-            <select class="input input--select">
-                <option>Низкий</option>
-                <option selected>Средний</option>
-                <option>Высокий</option>
-                <option>Критический</option>
+            <select class="input input--select" name="priority">
+                <option value=""{% if not form_data.priority %} selected{% endif %}>Не указан</option>
+                <option value="low"{% if form_data.priority == "low" %} selected{% endif %}>Низкий</option>
+                <option value="medium"{% if form_data.priority == "medium" %} selected{% endif %}>Средний</option>
+                <option value="high"{% if form_data.priority == "high" %} selected{% endif %}>Высокий</option>
+                <option value="critical"{% if form_data.priority == "critical" %} selected{% endif %}>Критический</option>
             </select>
         </label>
 
         <label class="field">
             <span>Дата начала</span>
-            <input class="input" type="date">
+            <input class="input" type="date" name="start_date" value="{{ form_data.start_date|default:'' }}">
         </label>
 
         <label class="field">
             <span>Срок выполнения</span>
-            <input class="input" type="date">
+            <input class="input" type="date" name="end_date" value="{{ form_data.end_date|default:'' }}">
         </label>
 
         <label class="field field--full">
             <span>Описание задачи</span>
-            <textarea class="input textarea" rows="5" placeholder="Опишите требуемый результат, критерии выполнения и ограничения"></textarea>
+            <textarea class="input textarea" rows="5" name="description" placeholder="Опишите требуемый результат, критерии выполнения и ограничения">{{ form_data.description|default:'' }}</textarea>
         </label>
 
         <div class="toolbar-row field--full">
-            <button class="btn btn--primary" type="button">Назначить задачу</button>
-            <button class="btn btn--secondary" type="button">Сохранить как черновик</button>
+            <button class="btn btn--primary" type="submit">Создать задачу</button>
+            <a class="btn btn--secondary" href="{% url 'dashboard' %}">Отмена</a>
         </div>
     </form>
 </section>
 
-<section class="card">
-    <h3>Недавно назначенные задачи</h3>
-    <div class="table-wrap">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Задача</th>
-                    <th>Исполнитель</th>
-                    <th>Срок</th>
-                    <th>Статус</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Инвентаризация склада</td>
-                    <td>Сидоров С.С.</td>
-                    <td>12.04.2026</td>
-                    <td><span class="tag tag--info">В работе</span></td>
-                </tr>
-                <tr>
-                    <td>Подготовить отчет по линии А</td>
-                    <td>Иванов И.И.</td>
-                    <td>15.04.2026</td>
-                    <td><span class="tag tag--warning">Запланировано</span></td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
+{% if employees_error %}
+<section class="card" style="margin-bottom: 0; border-color: #fca5a5;">
+    <p class="muted" style="margin: 0;">Список сотрудников частично недоступен: {{ employees_error }}</p>
 </section>
+{% endif %}
+{% if departments_error %}
+<section class="card" style="margin-bottom: 0; border-color: #fcd34d;">
+    <p class="muted" style="margin: 0;">Список подразделений частично недоступен: {{ departments_error }}</p>
+</section>
+{% endif %}
 {% endblock %}
