@@ -26,20 +26,33 @@
                 <a class="nav__link {% if active_page == 'dashboard' %}is-active{% endif %}" href="{% url 'dashboard' %}">
                     <span>Доска задач</span>
                 </a>
+                {% if current_user_scope != "employee" %}
                 <a class="nav__link {% if active_page == 'tasks_create' %}is-active{% endif %}" href="{% url 'task_create' %}">
                     <span>Создать/назначить задачу</span>
                 </a>
+                {% endif %}
                 <a class="nav__link {% if active_page == 'employees' %}is-active{% endif %}" href="{% url 'employees' %}">
                     <span>Сотрудники</span>
                 </a>
+                {% if current_user_scope == "admin" or current_user_scope == "manager" %}
                 <a class="nav__link {% if active_page == 'reports' %}is-active{% endif %}" href="{% url 'reports' %}">
                     <span>Отчеты</span>
                 </a>
+                {% endif %}
+                {% if current_user_scope == "admin" %}
+                <a class="nav__link {% if active_page == 'admin_departments' %}is-active{% endif %}" href="{% url 'admin_departments' %}">
+                    <span>Управление подразделениями</span>
+                </a>
+                <a class="nav__link {% if active_page == 'admin_users' %}is-active{% endif %}" href="{% url 'admin_users' %}">
+                    <span>Управление пользователями</span>
+                </a>
+                {% endif %}
             </nav>
 
             <div class="sidebar__footer">
-                <p class="muted">Текущий пользователь<strong id="roleBadge">Администратор</strong></p>
-                <button class="btn btn--ghost btn--block logout--btn" type="button"><a href="{% url 'auth' %}">Выйти</a></button>
+                <p class="muted">Пользователь: <strong>{{ current_username }}</strong></p>
+                <p class="muted">Роль: <strong id="roleBadge">{{ current_role_label }}</strong></p>
+                <a class="btn btn--ghost btn--block logout--btn" href="{% url 'auth' %}">Выйти</a>
             </div>
         </aside>
 
@@ -49,10 +62,6 @@
                     <h2>{% block page_title %}Панель управления{% endblock %}</h2>
                     <p class="muted">{% block page_subtitle %}Современная вёрстка под Django + API{% endblock %}</p>
                 </div>
-                <div class="topbar__right">
-                    <input class="input" type="search" placeholder="Поиск сотрудника или задачи">
-                    <a class="btn btn--primary" href="#">+ Создать</a>
-                </div>
             </header>
 
             <section class="content">
@@ -60,7 +69,9 @@
             </section>
         </main>
     </div>
-
     {% block overlay %}{% endblock %}
+    <script src="{% static 'js/api-client.js' %}"></script>
+    <script src="{% static 'js/app.js' %}"></script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

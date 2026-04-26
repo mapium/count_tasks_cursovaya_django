@@ -88,6 +88,8 @@ body {
 
 .sidebar__footer {
     margin-top: auto;
+    position: sticky;
+    bottom: 0;
 }
 
 .main {
@@ -114,9 +116,7 @@ body {
 
 .muted {
     color: var(--muted);
-    margin: 0;
 }
-
 .content {
     display: grid;
     gap: 16px;
@@ -125,11 +125,16 @@ body {
 .card,
 .stat-card,
 .kanban-column,
-.employee-card {
+.employee-card,
+.reports-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 16px;
     box-shadow: var(--shadow);
+}
+
+.reports-card {
+    padding: 14px;
 }
 
 .card {
@@ -176,6 +181,21 @@ body {
     border-color: var(--primary);
 }
 
+.input--error {
+    border-color: var(--danger) !important;
+    background: #fef2f2;
+}
+
+.input--error:focus {
+    outline: 2px solid #fecaca;
+    border-color: var(--danger);
+}
+
+.field-error {
+    color: var(--danger);
+    font-size: 12px;
+}
+
 .input--select {
     cursor: pointer;
 }
@@ -184,9 +204,11 @@ body {
     border: 0;
     border-radius: 10px;
     padding: 10px 14px;
+    margin: 10px 0;
     font: inherit;
     font-weight: 600;
     cursor: pointer;
+    text-decoration: none;
 }
 
 .btn--block {
@@ -209,7 +231,9 @@ body {
     color: var(--danger);
     border: 1px solid #fecaca;
 }
-
+.logout--btn {
+    margin: 10px 0;
+}
 .btn--ghost {
     background: transparent;
     border: 1px solid rgba(203, 213, 225, 0.4);
@@ -242,6 +266,8 @@ body {
 .kanban-tasks {
     display: grid;
     gap: 10px;
+    min-height: 120px;
+    align-content: start;
 }
 
 .task-card {
@@ -252,9 +278,33 @@ body {
     cursor: grab;
 }
 
+.task-card--overdue {
+    border: 2px solid var(--danger);
+}
+
 .task-card h5 {
     margin: 0 0 8px;
     font-size: 15px;
+}
+
+.task-title-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.task-title-link:hover {
+    text-decoration: underline;
+}
+
+.task-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.task-head h5 {
+    margin: 0;
 }
 
 .task-card p {
@@ -269,6 +319,36 @@ body {
     gap: 8px;
     color: var(--muted);
     font-size: 12px;
+}
+
+.task-status {
+    background: #e2e8f0;
+    color: #334155;
+}
+
+.task-status--planned {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.task-status--progress {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.task-status--review {
+    background: #ede9fe;
+    color: #6d28d9;
+}
+
+.task-status--done {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.task-status--overdue {
+    background: #fee2e2;
+    color: #b91c1c;
 }
 
 .badge,
@@ -341,7 +421,6 @@ body {
 .employee-grid,
 .reports-layout {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 12px;
 }
 
@@ -388,6 +467,81 @@ body {
     place-items: center;
     color: var(--muted);
     background: linear-gradient(180deg, #f8fafc, #eef2ff);
+}
+
+.report-bars {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.report-bars__row {
+    display: grid;
+    grid-template-columns: 44px 1fr 120px;
+    gap: 10px;
+    align-items: center;
+}
+
+.report-bars__label {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.report-bars__track {
+    width: 100%;
+    height: 14px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+    display: flex;
+}
+
+.report-bars__fill {
+    height: 100%;
+    flex: 0 0 auto;
+}
+
+.report-bars__fill--done {
+    background: linear-gradient(90deg, #60a5fa, #2563eb);
+}
+
+.report-bars__fill--pending {
+    background: #cbd5e1;
+}
+
+.report-bars__value {
+    font-size: 12px;
+    color: #334155;
+    text-align: right;
+}
+
+.report-bars-legend {
+    display: flex;
+    gap: 16px;
+    margin: 8px 0 4px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.report-bars-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.report-bars-legend__mark {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    display: inline-block;
+}
+
+.report-bars-legend__mark--done {
+    background: #2563eb;
+}
+
+.report-bars-legend__mark--pending {
+    background: #94a3b8;
 }
 
 .form-grid {

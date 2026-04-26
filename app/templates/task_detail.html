@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% load static date_formatters %}
+
+{% block title %}Задача #{{ task.id }} | Kanban Enterprise{% endblock %}
+{% block page_title %}Карточка задачи{% endblock %}
+{% block page_subtitle %}Подробная информация по выбранной задаче{% endblock %}
+
+{% block content %}
+<section class="card">
+    {% if messages %}
+    <section style="margin-bottom: 12px;">
+        {% for message in messages %}
+        <p class="{% if 'error' in message.tags %}auth-error{% else %}muted{% endif %}" style="margin: 0 0 8px;{% if 'success' in message.tags %} color: var(--success); font-weight: 600;{% endif %}">{{ message }}</p>
+        {% endfor %}
+    </section>
+    {% endif %}
+    <div class="task-head" style="margin-bottom: 12px;">
+        <h3 style="margin: 0;">{{ task.title|default:"Без названия" }}</h3>
+        <span class="tag task-status
+            {% if task.status == 'К выполнению' %}task-status--planned
+            {% elif task.status == 'В работе' %}task-status--progress
+            {% elif task.status == 'На проверке' %}task-status--review
+            {% elif task.status == 'Выполнено' %}task-status--done
+            {% else %}task-status--overdue{% endif %}">
+            {{ task.status|default:"Неизвестно" }}
+        </span>
+    </div>
+
+    <p class="muted" style="margin-bottom: 14px;">
+        {{ task.description|default:"Описание не заполнено." }}
+    </p>
+
+    <div class="table-wrap">
+        <table class="table">
+            <tbody>
+                <tr><th>Исполнитель</th><td>{{ task.assignee|default:"Неизвестно" }}</td></tr>
+                <tr><th>Создатель</th><td>{{ task.creator|default:"Неизвестно" }}</td></tr>
+                <tr><th>Подразделение</th><td>{{ task.department|default:"—" }}</td></tr>
+                <tr><th>Приоритет</th><td>{{ task.priority|default:"—" }}</td></tr>
+                <tr><th>План. начало</th><td>{{ task.planned_start_date|ru_date|default:"—" }}</td></tr>
+                <tr><th>План. окончание</th><td>{{ task.planned_end_date|ru_date|default:"—" }}</td></tr>
+                <tr><th>Просрочена</th><td>{% if task_is_overdue %}Да{% else %}Нет{% endif %}</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    {% if can_edit %}
+    <section class="card" style="margin-top: 12px;">
+        <h4 style="margin-top: 0;">Редактирование задачи</h4>
+        <form method="post" class="form-grid">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="edit">
+            <label class="field field--full">
+                <span>Название</span>
+                <input class="input" type="text" name="title" value="{{ task.title|default:'' }}" required>
+            </label>
+            <label class="field field--full">
+                <span>Описание</span>
+                <textarea class="input textarea" name="description">{{ task.description|default:'' }}</textarea>
+            </label>
+            <label class="field">
+                <span>Приоритет</span>
+                <select class="input input--select" name="priority">
+                    <option value="малый"{% if task.priority == "малый" %} selected{% endif %}>малый</option>
+                    <option value="средний"{% if task.priority == "средний" %} selected{% endif %}>средний</option>
+                    <option value="высокий"{% if task.priority == "высокий" %} selected{% endif %}>высокий</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>Статус</span>
+                <select class="input input--select" name="status_name">
+                    <option value="К выполнению"{% if task.status == "К выполнению" %} selected{% endif %}>К выполнению</option>
+                    <option value="В работе"{% if task.status == "В работе" %} selected{% endif %}>В работе</option>
+                    <option value="На проверке"{% if task.status == "На проверке" %} selected{% endif %}>На проверке</option>
+                    <option value="Выполнено"{% if task.status == "Выполнено" %} selected{% endif %}>Выполнено</option>
+                    <option value="Просрочено"{% if task.status == "Просрочено" %} selected{% endif %}>Просрочено</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>Факт. начало</span>
+                <input class="input" type="date" name="actual_start_date" value="{{ task.actual_start_date|default:'' }}">
+            </label>
+            <label class="field">
+                <span>Факт. окончание</span>
+                <input class="input" type="date" name="actual_end_date" value="{{ task.actual_end_date|default:'' }}">
+            </label>
+            <div class="field field--full">
+                <button class="btn btn--primary" type="submit">Сохранить изменения</button>
+            </div>
+        </form>
+    </section>
+    {% endif %}
+    <section class="card" style="margin-top: 12px;">
+        <h4 style="margin-top: 0;">Комментарии к задаче</h4>
+        <div class="comments-list">
+            {% for comment in task.comments %}
+            <div class="comment-item">
+                <p class="comment-text" style="margin: 0 0 4px;">
+                    {% if comment.comment_text %}
+                    {{ comment.comment_text }}
+                    {% elif comment.text %}
+                    {{ comment.text }}
+                    {% endif %}
+                </p>
+                <p class="muted" style="margin: 0; font-size: 0.85rem;">
+                    {{ comment.author|default:"Неизвестно" }}
+                    {% if comment.created_at %} · {{ comment.created_at|ru_date }}{% endif %}
+                </p>
+            </div>
+            {% empty %}
+            <p class="muted">Комментариев нет</p>
+            {% endfor %}
+        </div>
+    </section>
+    {% if can_comment %}
+    <section class="card" style="margin-top: 12px;">
+        <h4 style="margin-top: 0;">Комментарий к задаче</h4>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="comment">
+            <label class="field field--full">
+                <span>Текст комментария</span>
+                <textarea class="input textarea{% if comment_field_errors.comment_text %} input--error{% endif %}" name="comment_text" required>{{ comment_form_data.comment_text|default:'' }}</textarea>
+                {% if comment_field_errors.comment_text %}<small class="field-error">{{ comment_field_errors.comment_text }}</small>{% endif %}
+            </label>
+            <button class="btn btn--secondary" type="submit">Добавить комментарий</button>
+        </form>
+    </section>
+    {% endif %}
+
+    <div style="margin-top: 12px;">
+        {% if current_user_scope == "admin" or current_user_scope == "manager" %}
+        <form method="post" style="display:inline-block; margin-right:8px;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete">
+            <button class="btn btn--danger" type="submit">Удалить задачу</button>
+        </form>
+        {% endif %}
+        <a class="btn btn--secondary" href="{% url 'dashboard' %}{% if task_scope %}?task_scope={{ task_scope|urlencode }}{% endif %}">← Назад к доске</a>
+    </div>
+</section>
+{% endblock %}

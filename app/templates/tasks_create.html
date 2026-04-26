@@ -21,74 +21,98 @@
         {% csrf_token %}
         <label class="field">
             <span>Название задачи</span>
-            <input class="input" type="text" name="title" required placeholder="Например: Подготовить отчет по смене" value="{{ form_data.title|default:'' }}">
+            <input class="input{% if field_errors.title %} input--error{% endif %}" type="text" name="title" required placeholder="Например: Подготовить отчет по смене" value="{{ form_data.title|default:'' }}">
+            {% if field_errors.title %}<small class="field-error">{{ field_errors.title }}</small>{% endif %}
         </label>
 
         <label class="field">
             <span>Создатель задачи</span>
-            <select class="input input--select" name="creator_id">
+            <select class="input input--select{% if field_errors.creator_id %} input--error{% endif %}" name="creator_id" id="creatorSelect"{% if user_scope == "manager" %} disabled{% endif %}>
                 <option value="">Не выбран</option>
-                {% for eid, ename in employees_options %}
-                <option value="{{ eid }}"{% if form_data.creator_id == eid|stringformat:"s" %} selected{% endif %}>{{ ename }}</option>
+                {% for uid, uname, role_id, creator_dep_id in creator_options %}
+                <option
+                    value="{{ uid }}"
+                    data-role-id="{{ role_id }}"
+                    data-department-id="{{ creator_dep_id|default:'' }}"
+                    {% if form_data.creator_id == uid|stringformat:"s" %} selected{% endif %}
+                >{{ uname }}</option>
                 {% endfor %}
             </select>
+            {% if user_scope == "manager" %}
+            <input type="hidden" name="creator_id" value="{{ form_data.creator_id }}">
+            {% endif %}
+            {% if field_errors.creator_id %}<small class="field-error">{{ field_errors.creator_id }}</small>{% endif %}
         </label>
 
         <label class="field">
             <span>Исполнитель</span>
-            <select class="input input--select" name="assignee_id">
+            <select class="input input--select{% if field_errors.assignee_id %} input--error{% endif %}" name="assignee_id" id="assigneeSelect">
                 <option value="">Не выбран</option>
-                {% for eid, ename in employees_options %}
-                <option value="{{ eid }}"{% if form_data.assignee_id == eid|stringformat:"s" %} selected{% endif %}>{{ ename }}</option>
+                {% for eid, ename, assignee_dep_id in employees_options %}
+                <option
+                    value="{{ eid }}"
+                    data-department-id="{{ assignee_dep_id|default:'' }}"
+                    {% if form_data.assignee_id == eid|stringformat:"s" %} selected{% endif %}
+                >{{ ename }}</option>
                 {% endfor %}
             </select>
+            {% if field_errors.assignee_id %}<small class="field-error">{{ field_errors.assignee_id }}</small>{% endif %}
         </label>
 
         <label class="field">
             <span>Подразделение</span>
-            <select class="input input--select" name="department_id">
+            <select class="input input--select{% if field_errors.department_id %} input--error{% endif %}" name="department_id" id="departmentSelect"{% if user_scope == "manager" %} disabled{% endif %}>
                 <option value="">Не выбрано</option>
                 {% for did, dname in departments_options %}
                 <option value="{{ did }}"{% if form_data.department_id == did|stringformat:"s" %} selected{% endif %}>{{ dname }}</option>
                 {% endfor %}
             </select>
+            {% if user_scope == "manager" %}
+            <input type="hidden" name="department_id" value="{{ form_data.department_id }}">
+            {% endif %}
+            {% if field_errors.department_id %}<small class="field-error">{{ field_errors.department_id }}</small>{% endif %}
         </label>
 
         <label class="field">
             <span>Статус</span>
-            <select class="input input--select" name="status">
+            <select class="input input--select{% if field_errors.status %} input--error{% endif %}" name="status">
                 <option value=""{% if not form_data.status %} selected{% endif %}>Не указан</option>
-                <option value="planned"{% if form_data.status == "planned" %} selected{% endif %}>Запланировано</option>
+                <option value="planned"{% if form_data.status == "planned" %} selected{% endif %}>К выполнению</option>
                 <option value="in_progress"{% if form_data.status == "in_progress" %} selected{% endif %}>В работе</option>
+                <option value="review"{% if form_data.status == "review" %} selected{% endif %}>На проверке</option>
                 <option value="done"{% if form_data.status == "done" %} selected{% endif %}>Выполнено</option>
                 <option value="overdue"{% if form_data.status == "overdue" %} selected{% endif %}>Просрочено</option>
             </select>
+            {% if field_errors.status %}<small class="field-error">{{ field_errors.status }}</small>{% endif %}
         </label>
 
         <label class="field">
             <span>Приоритет</span>
-            <select class="input input--select" name="priority">
+            <select class="input input--select{% if field_errors.priority %} input--error{% endif %}" name="priority">
                 <option value=""{% if not form_data.priority %} selected{% endif %}>Не указан</option>
-                <option value="low"{% if form_data.priority == "low" %} selected{% endif %}>Низкий</option>
-                <option value="medium"{% if form_data.priority == "medium" %} selected{% endif %}>Средний</option>
-                <option value="high"{% if form_data.priority == "high" %} selected{% endif %}>Высокий</option>
-                <option value="critical"{% if form_data.priority == "critical" %} selected{% endif %}>Критический</option>
+                <option value="малый"{% if form_data.priority == "малый" %} selected{% endif %}>Малый</option>
+                <option value="средний"{% if form_data.priority == "средний" %} selected{% endif %}>Средний</option>
+                <option value="высокий"{% if form_data.priority == "высокий" %} selected{% endif %}>Высокий</option>
             </select>
+            {% if field_errors.priority %}<small class="field-error">{{ field_errors.priority }}</small>{% endif %}
         </label>
 
         <label class="field">
             <span>Дата начала</span>
-            <input class="input" type="date" name="start_date" value="{{ form_data.start_date|default:'' }}">
+            <input class="input {% if field_errors.start_date %} input--error{% endif %}" type="date" name="start_date" value="{{ form_data.start_date|default:'' }}">
+            {% if field_errors.start_date %}<small class="field-error">{{ field_errors.start_date }}</small>{% endif %}
         </label>
 
         <label class="field">
             <span>Срок выполнения</span>
-            <input class="input" type="date" name="end_date" value="{{ form_data.end_date|default:'' }}">
+            <input class="input {% if field_errors.end_date %} input--error{% endif %}" type="date" name="end_date" value="{{ form_data.end_date|default:'' }}">
+            {% if field_errors.end_date %}<small class="field-error">{{ field_errors.end_date }}</small>{% endif %}
         </label>
 
         <label class="field field--full">
             <span>Описание задачи</span>
-            <textarea class="input textarea" rows="5" name="description" placeholder="Опишите требуемый результат, критерии выполнения и ограничения">{{ form_data.description|default:'' }}</textarea>
+            <textarea class="input textarea{% if field_errors.description %} input--error{% endif %}" rows="5" name="description" placeholder="Опишите требуемый результат, критерии выполнения и ограничения">{{ form_data.description|default:'' }}</textarea>
+            {% if field_errors.description %}<small class="field-error">{{ field_errors.description }}</small>{% endif %}
         </label>
 
         <div class="toolbar-row field--full">
@@ -103,9 +127,80 @@
     <p class="muted" style="margin: 0;">Список сотрудников частично недоступен: {{ employees_error }}</p>
 </section>
 {% endif %}
+{% if users_error %}
+<section class="card" style="margin-bottom: 0; border-color: #fca5a5;">
+    <p class="muted" style="margin: 0;">Список пользователей частично недоступен: {{ users_error }}</p>
+</section>
+{% endif %}
 {% if departments_error %}
 <section class="card" style="margin-bottom: 0; border-color: #fcd34d;">
     <p class="muted" style="margin: 0;">Список подразделений частично недоступен: {{ departments_error }}</p>
 </section>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var creatorSelect = document.getElementById("creatorSelect");
+        var departmentSelect = document.getElementById("departmentSelect");
+        var assigneeSelect = document.getElementById("assigneeSelect");
+        if (!creatorSelect || !departmentSelect || creatorSelect.disabled) return;
+        var dynamicDepartmentHiddenInputId = "departmentSelectHiddenInput";
+
+        function ensureDepartmentHiddenInput() {
+            var hidden = document.getElementById(dynamicDepartmentHiddenInputId);
+            if (!hidden) {
+                hidden = document.createElement("input");
+                hidden.type = "hidden";
+                hidden.name = "department_id";
+                hidden.id = dynamicDepartmentHiddenInputId;
+                departmentSelect.parentNode.appendChild(hidden);
+            }
+            hidden.value = departmentSelect.value || "";
+        }
+
+        function removeDepartmentHiddenInput() {
+            var hidden = document.getElementById(dynamicDepartmentHiddenInputId);
+            if (hidden) {
+                hidden.remove();
+            }
+        }
+
+        function syncDepartmentByCreator() {
+            var option = creatorSelect.options[creatorSelect.selectedIndex];
+            if (!option) return;
+            var roleId = option.getAttribute("data-role-id");
+            var depId = option.getAttribute("data-department-id");
+
+            if (roleId === "2" && depId) {
+                departmentSelect.value = depId;
+                departmentSelect.disabled = true;
+                ensureDepartmentHiddenInput();
+                if (assigneeSelect) {
+                    Array.prototype.forEach.call(assigneeSelect.options, function (assigneeOption) {
+                        if (!assigneeOption.value) return;
+                        var assigneeDepId = assigneeOption.getAttribute("data-department-id");
+                        var visible = assigneeDepId === depId;
+                        assigneeOption.hidden = !visible;
+                        if (!visible && assigneeOption.selected) {
+                            assigneeOption.selected = false;
+                        }
+                    });
+                }
+            } else {
+                departmentSelect.disabled = false;
+                removeDepartmentHiddenInput();
+                if (assigneeSelect) {
+                    Array.prototype.forEach.call(assigneeSelect.options, function (assigneeOption) {
+                        assigneeOption.hidden = false;
+                    });
+                }
+            }
+        }
+
+        creatorSelect.addEventListener("change", syncDepartmentByCreator);
+        syncDepartmentByCreator();
+    });
+</script>
 {% endblock %}

@@ -1,12 +1,40 @@
 from collections import defaultdict
-
+from datetime import date
+from difflib import SequenceMatcher
 from django.contrib import messages
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_POST
+from openpyxl import Workbook
 
 from app.controllers.department_controller import DepartmentController
 from app.controllers.employee_controller import EmployeeController
 from app.controllers.tasks_controller import TasksController
 from app.controllers.user_controller import UserController
+
+KANBAN_COLUMN_TO_STATUS_NAME = {
+    "planned": "К выполнению",
+    "in_progress": "В работе",
+    "review": "На проверке",
+    "done": "Выполнено",
+}
+STATUS_NAME_TO_KANBAN_COLUMN = {
+    value.lower(): key for key, value in KANBAN_COLUMN_TO_STATUS_NAME.items()
+}
+STATUS_SLUG_TO_ID = {
+    "planned": 1,
+    "in_progress": 2,
+    "review": 3,
+    "done": 4,
+    "overdue": 5,
+}
+STATUS_NAME_TO_ID = {
+    "К выполнению": 1,
+    "В работе": 2,
+    "На проверке": 3,
+    "Выполнено": 4,
+    "Просрочено": 5,
+}
 
 
 def _extract_response_error(response):
@@ -30,6 +58,21 @@ def _get_required_token(request, redirect_name):
     return redirect(redirect_name)
 
 
+def _is_fuzzy_last_name_match(last_name, query):
+    candidate = (last_name or "").strip().lower()
+    needle = (query or "").strip().lower()
+    if not needle:
+        return True
+    if needle in candidate:
+        return True
+    if not candidate:
+        return False
+    if SequenceMatcher(None, candidate, needle).ratio() >= 0.7:
+        return True
+    candidate_parts = candidate.split()
+    return any(SequenceMatcher(None, part, needle).ratio() >= 0.75 for part in candidate_parts)
+
+
 def _default_employee_form(departments_options):
     return {
         "employee_id": "",
@@ -46,6 +89,190 @@ def _default_employee_form(departments_options):
     }
 
 
+def _resolve_user_scope(request, access_token):
+    cached_scope = request.session.get("ui_user_scope")
+    if cached_scope in {"admin", "manager", "employee"}:
+        return cached_scope, None
+
+    admin_employees, admin_error = EmployeeController.get_employees(access_token=access_token)
+    if admin_error is None:
+        request.session["ui_user_scope"] = "admin"
+        return "admin", None
+
+    manager_employees, manager_error = EmployeeController.get_manager_department_employees(
+        access_token=access_token
+    )
+    if manager_error is None:
+        request.session["ui_user_scope"] = "manager"
+        return "manager", None
+
+    request.session["ui_user_scope"] = "employee"
+    return "employee", admin_error or manager_error
+
+
+def _load_dashboard_tasks(access_token, scope):
+    if scope == "admin":
+        tasks, error, _ = TasksController.get_all_tasks(access_token=access_token)
+        return tasks, error
+    if scope == "manager":
+        return TasksController.get_current_tasks(access_token=access_token)
+    return TasksController.get_my_tasks(access_token=access_token)
+
+
+def _load_tasks_for_scope(request, access_token, scope):
+    task_scope = (request.GET.get("task_scope") or "").strip().lower()
+    if scope == "employee" and task_scope == "department":
+        return task_scope, TasksController.get_current_tasks(access_token=access_token)
+    tasks, error = _load_dashboard_tasks(access_token, scope)
+    if scope == "employee":
+        task_scope = "my"
+    return task_scope, (tasks, error)
+
+
+def _parse_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _department_field_errors_from_api(api_error):
+    text = (api_error or "").strip()
+    lowered = text.lower()
+    if not lowered:
+        return {}
+    if "name" in lowered or "назван" in lowered:
+        return {"name": text}
+    if "description" in lowered or "описан" in lowered:
+        return {"description": text}
+    return {"name": text, "description": text}
+
+
+def _filter_tasks_by_period(tasks, period):
+    if period not in {"month", "year"}:
+        return tasks
+
+    today = date.today()
+    filtered = []
+    for row in tasks:
+        if not isinstance(row, dict):
+            continue
+        planned_end = row.get("planned_end_date")
+        planned_start = row.get("planned_start_date")
+        raw_date = planned_end or planned_start
+        if not raw_date:
+            continue
+        try:
+            task_date = date.fromisoformat(str(raw_date))
+        except ValueError:
+            continue
+
+        if period == "month" and task_date.year == today.year and task_date.month == today.month:
+            filtered.append(row)
+        elif period == "year" and task_date.year == today.year:
+            filtered.append(row)
+    return filtered
+
+
+def _safe_iso_date(raw_value):
+    if not raw_value:
+        return None
+    try:
+        value = str(raw_value).strip()
+        if "T" in value:
+            value = value.split("T", 1)[0]
+        elif " " in value:
+            value = value.split(" ", 1)[0]
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _task_report_date(task_row):
+    return (
+        _safe_iso_date(task_row.get("actual_end_date"))
+        or _safe_iso_date(task_row.get("planned_end_date"))
+        or _safe_iso_date(task_row.get("planned_start_date"))
+    )
+
+
+def _is_task_done(task_row):
+    return (task_row.get("status") or "").strip().lower() == "выполнено"
+
+
+def _xlsx_response(workbook, filename):
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    workbook.save(response)
+    return response
+
+
+def _build_tasks_report_excel(tasks, department_name, period_label):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Выполнение задач"
+    ws.append(["Отчет", "Выполнение задач сотрудниками подразделения"])
+    ws.append(["Подразделение", department_name])
+    ws.append(["Период", period_label])
+    ws.append([])
+    ws.append(["Исполнитель", "Всего задач", "Выполнено", "Процент выполнения, %"])
+
+    by_assignee = defaultdict(lambda: {"total": 0, "done": 0})
+    for row in tasks:
+        if not isinstance(row, dict):
+            continue
+        assignee = (row.get("assignee") or "Неизвестно").strip()
+        by_assignee[assignee]["total"] += 1
+        if _is_task_done(row):
+            by_assignee[assignee]["done"] += 1
+
+    for assignee in sorted(by_assignee.keys(), key=lambda item: item.lower()):
+        total = by_assignee[assignee]["total"]
+        done = by_assignee[assignee]["done"]
+        percent = round((done / total) * 100, 2) if total else 0
+        ws.append([assignee, total, done, percent])
+
+    if not by_assignee:
+        ws.append(["Нет данных", 0, 0, 0])
+
+    ws.column_dimensions["A"].width = 40
+    ws.column_dimensions["B"].width = 14
+    ws.column_dimensions["C"].width = 12
+    ws.column_dimensions["D"].width = 24
+    return wb
+
+
+def _build_employees_report_excel(employees, department_name_map):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Численность сотрудников"
+    ws.append(["Отчет", "Численность сотрудников предприятия"])
+    ws.append(["Сформировано", str(date.today())])
+    ws.append([])
+    ws.append(["Подразделение", "Количество сотрудников"])
+
+    by_department = defaultdict(int)
+    total = 0
+    for row in employees:
+        if not isinstance(row, dict):
+            continue
+        total += 1
+        dep_id = row.get("department_id")
+        dep_name = department_name_map.get(dep_id) if dep_id is not None else None
+        by_department[dep_name or "Без подразделения"] += 1
+
+    for dep_name in sorted(by_department.keys(), key=lambda item: item.lower()):
+        ws.append([dep_name, by_department[dep_name]])
+    ws.append([])
+    ws.append(["Итого", total])
+
+    ws.column_dimensions["A"].width = 40
+    ws.column_dimensions["B"].width = 24
+    return wb
+
+
 def auth(request):
     if request.method != "POST":
         return render(request, "auth.html")
@@ -60,8 +287,10 @@ def auth(request):
         except Exception:
             data = {}
         request.session["is_authenticated"] = True
+        request.session["username"] = (request.POST.get("username") or "").strip()
         if data.get("access_token"):
             request.session["access_token"] = data["access_token"]
+        request.session.pop("ui_user_scope", None)
         return redirect("dashboard")
 
     status = response.status_code if response is not None else "нет ответа"
@@ -73,17 +302,304 @@ def auth(request):
 
 
 def dashboard(request):
-    return render(request, "dashboard.html")
+    token = request.session.get("access_token")
+    scope, scope_error = _resolve_user_scope(request, token)
+    task_scope, (tasks, tasks_error) = _load_tasks_for_scope(request, token, scope)
+    selected_department = (request.GET.get("department") or "").strip()
+    selected_assignee = (request.GET.get("assignee") or "").strip()
+    selected_period = (request.GET.get("period") or "all").strip().lower()
+    if selected_period not in {"all", "month", "year"}:
+        selected_period = "all"
+    if scope == "employee":
+        selected_assignee = ""
+
+    departments_filter_options = []
+    department_filter_label = "Все подразделения"
+    if scope == "admin":
+        department_pairs = {}
+        for row in tasks:
+            if not isinstance(row, dict):
+                continue
+            dep_id = row.get("department_id")
+            dep_name = (row.get("department") or "").strip()
+            if dep_id is None:
+                continue
+            department_pairs[dep_id] = dep_name or f"Отдел #{dep_id}"
+        departments_filter_options = sorted(
+            department_pairs.items(),
+            key=lambda x: ((x[1] or "").lower(), x[0]),
+        )
+        if selected_department:
+            try:
+                selected_department_id = int(selected_department)
+                tasks = [
+                    row
+                    for row in tasks
+                    if isinstance(row, dict) and row.get("department_id") == selected_department_id
+                ]
+            except ValueError:
+                selected_department = ""
+    else:
+        department_filter_label = "Моё подразделение"
+
+    assignee_pairs = {}
+    for row in tasks:
+        if not isinstance(row, dict):
+            continue
+        assignee_name = (row.get("assignee") or "").strip()
+        if not assignee_name:
+            continue
+        assignee_pairs[assignee_name] = assignee_name
+    assignee_filter_options = sorted(assignee_pairs.values(), key=lambda x: x.lower())
+    if selected_assignee:
+        tasks = [
+            row
+            for row in tasks
+            if isinstance(row, dict) and (row.get("assignee") or "").strip() == selected_assignee
+        ]
+    if selected_period in {"month", "year"}:
+        tasks = _filter_tasks_by_period(tasks, selected_period)
+
+    grouped = {"planned": [], "in_progress": [], "review": [], "done": []}
+    today = date.today()
+    for row in tasks:
+        if not isinstance(row, dict):
+            continue
+        status_name = (row.get("status") or "").strip()
+        status_key = STATUS_NAME_TO_KANBAN_COLUMN.get(status_name.lower(), "planned")
+        planned_end_date = row.get("planned_end_date") or ""
+        is_overdue = False
+        if status_key == "in_progress" and planned_end_date:
+            try:
+                is_overdue = date.fromisoformat(str(planned_end_date)) < today
+            except ValueError:
+                is_overdue = False
+
+        task_ui = {
+            "id": row.get("id"),
+            "title": row.get("title") or "Без названия",
+            "assignee": row.get("assignee") or "Неизвестно",
+            "department": row.get("department") or "",
+            "planned_end_date": planned_end_date,
+            "priority": row.get("priority") or "",
+            "status_name": status_name,
+            "is_overdue": is_overdue,
+        }
+        grouped[status_key].append(task_ui)
+
+    counts = {key: len(value) for key, value in grouped.items()}
+    overdue_count = sum(1 for task in grouped["in_progress"] if task.get("is_overdue"))
+    stats = {
+        "total": len(tasks),
+        "done": counts["done"],
+        "overdue": overdue_count,
+        "review": counts['review'],
+        "in_progress": counts["in_progress"],
+    }
+
+    return render(
+        request,
+        "dashboard.html",
+        {
+            "tasks_grouped": grouped,
+            "counts": counts,
+            "stats": stats,
+            "tasks_error": tasks_error,
+            "scope_error": scope_error if tasks_error else None,
+            "column_to_status_name": KANBAN_COLUMN_TO_STATUS_NAME,
+            "user_scope": scope,
+            "departments_filter_options": departments_filter_options,
+            "department_filter_label": department_filter_label,
+            "selected_department": selected_department,
+            "assignee_filter_options": assignee_filter_options,
+            "selected_assignee": selected_assignee,
+            "selected_period": selected_period,
+            "task_scope": task_scope,
+            "active_page": "dashboard",
+        },
+    )
+
+
+def task_detail(request, task_id):
+    token = request.session.get("access_token")
+    scope, _ = _resolve_user_scope(request, token)
+    task_scope, (tasks, tasks_error) = _load_tasks_for_scope(request, token, scope)
+
+    if tasks_error:
+        messages.error(request, f"Не удалось загрузить задачу: {tasks_error}")
+        return redirect("dashboard")
+
+    selected = None
+    for row in tasks:
+        if isinstance(row, dict) and row.get("id") == int(task_id):
+            selected = row
+            break
+
+    if not selected:
+        messages.error(request, "Задача не найдена или недоступна для вашей роли.")
+        return redirect("dashboard")
+
+    current_username = (request.session.get("username") or "").strip()
+    task_creator = (selected.get("creator") or "").strip()
+    task_assignee = (selected.get("assignee") or "").strip()
+    is_admin = scope == "admin"
+    can_comment = is_admin or current_username in {task_creator, task_assignee}
+    can_edit = is_admin or (current_username and current_username == task_creator)
+    comment_form_data = {"comment_text": ""}
+    comment_field_errors = {}
+    comments, comments_error = TasksController.get_task_comments(task_id, access_token=token)
+    if comments_error:
+        messages.warning(request, f"Не удалось загрузить комментарии: {comments_error}")
+        comments = selected.get("comments") if isinstance(selected.get("comments"), list) else []
+    selected["comments"] = [row for row in comments if isinstance(row, dict)]
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "comment":
+            if not can_comment:
+                messages.error(request, "У вас нет прав на добавление комментария к этой задаче.")
+                return redirect("task_detail", task_id=task_id)
+            comment_text = (request.POST.get("comment_text") or "").strip()
+            comment_form_data["comment_text"] = comment_text
+            if not comment_text:
+                messages.error(request, "Комментарий не может быть пустым.")
+                comment_field_errors["comment_text"] = "Поле обязательно."
+                return render(
+                    request,
+                    "task_detail.html",
+                    {
+                        "task": selected,
+                        "task_is_overdue": False,
+                        "task_scope": task_scope,
+                        "can_comment": can_comment,
+                        "can_edit": can_edit,
+                        "current_user_scope": scope,
+                        "comment_form_data": comment_form_data,
+                        "comment_field_errors": comment_field_errors,
+                        "active_page": "dashboard",
+                    },
+                )
+            response = TasksController.add_comment(task_id, comment_text, access_token=token)
+            if response is None:
+                messages.error(request, "Нет связи с API при добавлении комментария.")
+            elif 200 <= response.status_code < 300:
+                messages.success(request, "Комментарий добавлен.")
+            else:
+                messages.error(request, f"Ошибка API: {_extract_response_error(response)}")
+            return redirect("task_detail", task_id=task_id)
+
+        if action == "edit":
+            if not can_edit:
+                messages.error(request, "У вас нет прав на редактирование этой задачи.")
+                return redirect("task_detail", task_id=task_id)
+            status_name = (request.POST.get("status_name") or selected.get("status") or "").strip()
+            status_id = STATUS_NAME_TO_ID.get(status_name, selected.get("status_id"))
+            payload = {
+                "id": selected.get("id"),
+                "title": (request.POST.get("title") or selected.get("title") or "").strip(),
+                "description": (request.POST.get("description") or selected.get("description") or "").strip(),
+                "creator_id": selected.get("creator_id"),
+                "assignee_id": selected.get("assignee_id"),
+                "department_id": selected.get("department_id"),
+                "status_id": int(status_id) if status_id is not None else None,
+                "priority": (request.POST.get("priority") or selected.get("priority") or "малый").strip(),
+                "planned_start_date": selected.get("planned_start_date"),
+                "planned_end_date": selected.get("planned_end_date"),
+                "actual_start_date": (request.POST.get("actual_start_date") or selected.get("actual_start_date") or ""),
+                "actual_end_date": (request.POST.get("actual_end_date") or selected.get("actual_end_date") or ""),
+            }
+            response = TasksController.update_task(task_id, payload, access_token=token)
+            if response is None:
+                messages.error(request, "Нет связи с API при редактировании задачи.")
+            elif 200 <= response.status_code < 300:
+                messages.success(request, "Задача обновлена.")
+            else:
+                messages.error(request, f"Ошибка API: {_extract_response_error(response)}")
+            return redirect("task_detail", task_id=task_id)
+
+        if action == "delete":
+            if not (scope in {"admin", "manager"}):
+                messages.error(request, "Удаление задачи доступно только администратору и менеджеру.")
+                return redirect("task_detail", task_id=task_id)
+            response = TasksController.delete_task(task_id, access_token=token)
+            if response is None:
+                messages.error(request, "Нет связи с API при удалении задачи.")
+                return redirect("task_detail", task_id=task_id)
+            if 200 <= response.status_code < 300:
+                messages.success(request, "Задача удалена.")
+                return redirect("dashboard")
+            messages.error(request, f"Ошибка API: {_extract_response_error(response)}")
+            return redirect("task_detail", task_id=task_id)
+
+    planned_end = selected.get("planned_end_date") or ""
+    is_overdue = False
+    if (selected.get("status") or "").strip().lower() == "в работе" and planned_end:
+        try:
+            is_overdue = date.fromisoformat(str(planned_end)) < date.today()
+        except ValueError:
+            is_overdue = False
+
+    return render(
+        request,
+        "task_detail.html",
+        {
+            "task": selected,
+            "task_is_overdue": is_overdue,
+            "task_scope": task_scope,
+            "can_comment": can_comment,
+            "can_edit": can_edit,
+            "current_user_scope": scope,
+            "comment_form_data": comment_form_data,
+            "comment_field_errors": comment_field_errors,
+            "active_page": "dashboard",
+        },
+    )
+
+
+@require_POST
+def dashboard_task_status_update(request):
+    token = request.session.get("access_token")
+    if not token:
+        return JsonResponse({"ok": False, "error": "Нужна авторизация."}, status=401)
+
+    task_id_raw = (request.POST.get("task_id") or "").strip()
+    target_column = (request.POST.get("target_column") or "").strip()
+    status_name = KANBAN_COLUMN_TO_STATUS_NAME.get(target_column)
+    if status_name is None:
+        return JsonResponse({"ok": False, "error": "Некорректная колонка."}, status=400)
+    try:
+        task_id = int(task_id_raw)
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "Некорректный task_id."}, status=400)
+
+    response = TasksController.update_task_status(task_id, status_name, access_token=token)
+    if response is None:
+        return JsonResponse({"ok": False, "error": "Нет связи с API."}, status=502)
+    if 200 <= response.status_code < 300:
+        return JsonResponse({"ok": True})
+
+    return JsonResponse(
+        {"ok": False, "error": _extract_response_error(response)},
+        status=response.status_code,
+    )
 
 
 def employees(request):
     token = request.session.get("access_token")
-    employees_list, api_error = EmployeeController.get_employees(access_token=token)
+    scope, scope_error = _resolve_user_scope(request, token)
+    if scope == "admin":
+        employees_list, api_error = EmployeeController.get_employees(access_token=token)
+    elif scope == "manager":
+        employees_list, api_error = EmployeeController.get_manager_department_employees(access_token=token)
+    else:
+        employees_list, api_error = EmployeeController.get_my_department_employees(access_token=token)
 
     selected_department = (request.GET.get("department") or "").strip()
     search_query = (request.GET.get("q") or "").strip()
     mode = (request.GET.get("mode") or "").strip().lower()
     edit_id_raw = (request.GET.get("edit_id") or "").strip()
+    flashed_form_mode = request.session.pop("employees_form_mode", "")
+    flashed_form_initial = request.session.pop("employees_form_initial", None)
+    flashed_field_errors = request.session.pop("employees_field_errors", None)
 
     dept_names, dept_error = DepartmentController.get_department_name_map()
     form_departments = dict(dept_names)
@@ -108,7 +624,7 @@ def employees(request):
             if selected_department != "__none__" and str(department_id) != selected_department:
                 continue
 
-        if search_query_norm and search_query_norm not in (row.get("last_name") or "").lower():
+        if search_query_norm and not _is_fuzzy_last_name_match(row.get("last_name"), search_query_norm):
             continue
 
         filtered_employees.append(row)
@@ -183,6 +699,14 @@ def employees(request):
     elif mode != "add":
         mode = ""
 
+    field_errors = {}
+    if flashed_form_mode == "add":
+        mode = "add"
+        if isinstance(flashed_form_initial, dict):
+            form_initial = {**form_initial, **flashed_form_initial}
+        if isinstance(flashed_field_errors, dict):
+            field_errors = flashed_field_errors
+
     return render(
         request,
         "employees.html",
@@ -191,12 +715,15 @@ def employees(request):
             "employees_by_department": employees_by_department,
             "has_employees_without_department": has_employees_without_department,
             "api_error": api_error,
+            "scope_error": scope_error,
             "departments_error": dept_error,
             "departments_options": departments_options,
             "selected_department": selected_department,
             "search_query": search_query,
             "form_mode": mode,
             "form_initial": form_initial,
+            "field_errors": field_errors,
+            "user_scope": scope,
             "active_page": "employees",
         },
     )
@@ -210,23 +737,52 @@ def employee_create(request):
     if not isinstance(token_or_redirect, str):
         return token_or_redirect
     token = token_or_redirect
+    scope, _ = _resolve_user_scope(request, token)
+    if scope == "employee":
+        messages.error(request, "У сотрудника нет прав на создание сотрудников.")
+        return redirect("employees")
 
     first_name = (request.POST.get("first_name") or "").strip()
     last_name = (request.POST.get("last_name") or "").strip()
     email = (request.POST.get("email") or "").strip()
     passport_data = (request.POST.get("passport_data") or "").strip()
     dept_raw = request.POST.get("department_id")
+    flashed_form_initial = {
+        "employee_id": "",
+        "first_name": first_name,
+        "last_name": last_name,
+        "middle_name": (request.POST.get("middle_name") or "").strip(),
+        "phone_number": (request.POST.get("phone_number") or "").strip(),
+        "email": email,
+        "passport_data": passport_data,
+        "inn": (request.POST.get("inn") or "").strip(),
+        "snils": (request.POST.get("snils") or "").strip(),
+        "department_id": (dept_raw or "").strip(),
+        "is_active": request.POST.get("is_active") == "on",
+    }
 
-    if not first_name or not last_name or not email or not passport_data:
+    field_errors = {}
+    if not first_name:
+        field_errors["first_name"] = "Поле обязательно."
+    if not last_name:
+        field_errors["last_name"] = "Поле обязательно."
+    if not email:
+        field_errors["email"] = "Поле обязательно."
+    if not passport_data:
+        field_errors["passport_data"] = "Поле обязательно."
+    if field_errors:
         messages.error(request, "Заполните имя, фамилию, email и паспортные данные.")
-        return redirect("employees")
-    if len(passport_data) < 10:
-        messages.error(request, "Паспортные данные — не менее 10 символов.")
+        request.session["employees_form_mode"] = "add"
+        request.session["employees_form_initial"] = flashed_form_initial
+        request.session["employees_field_errors"] = field_errors
         return redirect("employees")
     try:
         department_id = int(dept_raw)
     except (TypeError, ValueError):
         messages.error(request, "Выберите подразделение.")
+        request.session["employees_form_mode"] = "add"
+        request.session["employees_form_initial"] = flashed_form_initial
+        request.session["employees_field_errors"] = {"department_id": "Поле обязательно."}
         return redirect("employees")
 
     payload = {
@@ -242,6 +798,8 @@ def employee_create(request):
         if value:
             payload[key] = value
 
+    if scope == "manager":
+        payload["_manager_mode"] = True
     response = EmployeeController.create_employee(payload, access_token=token)
     if response is None:
         messages.error(request, "Не удалось связаться с API при создании.")
@@ -262,6 +820,10 @@ def employee_update(request):
     if not isinstance(token_or_redirect, str):
         return token_or_redirect
     token = token_or_redirect
+    scope, _ = _resolve_user_scope(request, token)
+    if scope == "employee":
+        messages.error(request, "У сотрудника нет прав на редактирование сотрудников.")
+        return redirect("employees")
 
     raw_id = request.POST.get("employee_id")
     try:
@@ -285,6 +847,8 @@ def employee_update(request):
             return redirect("employees")
 
     payload["is_active"] = request.POST.get("is_active") == "on"
+    if scope == "manager":
+        payload["_manager_mode"] = True
     response = EmployeeController.update_employee(employee_id, payload, access_token=token)
     if response is None:
         messages.error(request, "Не удалось связаться с API при сохранении.")
@@ -305,6 +869,10 @@ def employee_delete(request):
     if not isinstance(token_or_redirect, str):
         return token_or_redirect
     token = token_or_redirect
+    scope, _ = _resolve_user_scope(request, token)
+    if scope == "employee":
+        messages.error(request, "У сотрудника нет прав на удаление сотрудников.")
+        return redirect("employees")
 
     raw_id = request.POST.get("employee_id")
     try:
@@ -313,7 +881,10 @@ def employee_delete(request):
         messages.error(request, "Некорректный идентификатор сотрудника.")
         return redirect("employees")
 
-    response = EmployeeController.delete_employee(employee_id, access_token=token)
+    if scope == "manager":
+        response = EmployeeController.delete_manager_department_employee(employee_id, access_token=token)
+    else:
+        response = EmployeeController.delete_employee(employee_id, access_token=token)
     if response is None:
         messages.error(request, "Не удалось связаться с API при удалении.")
         return redirect("employees")
@@ -325,22 +896,481 @@ def employee_delete(request):
     return redirect("employees")
 
 
+def _period_label(period):
+    if period == "month":
+        return "За месяц"
+    if period == "year":
+        return "За год"
+    return "За всё время"
+
+
+def _build_employee_options(employees):
+    options = []
+    for row in employees:
+        user_id = row.get("user_id")
+        if user_id is None:
+            continue
+        full_name = " ".join(
+            value
+            for value in (
+                row.get("last_name") or "",
+                row.get("first_name") or "",
+                row.get("middle_name") or "",
+            )
+            if value
+        ).strip()
+        options.append((user_id, full_name or f"Сотрудник #{user_id}"))
+    options.sort(key=lambda pair: pair[1].lower())
+    return options
+
+
+def _build_monthly_employee_stats(tasks, selected_employee_id, selected_year):
+    by_month_total = {month: 0 for month in range(1, 13)}
+    by_month_done = {month: 0 for month in range(1, 13)}
+    for row in tasks:
+        if row.get("assignee_id") != selected_employee_id:
+            continue
+        task_date = _task_report_date(row)
+        if task_date is None or task_date.year != selected_year:
+            continue
+        by_month_total[task_date.month] += 1
+        if _is_task_done(row):
+            by_month_done[task_date.month] += 1
+
+    month_labels = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
+    monthly_stats = []
+    chart_total_tasks = 0
+    chart_done_tasks = 0
+    for month in range(1, 13):
+        total = by_month_total[month]
+        done = by_month_done[month]
+        pending = total - done
+        chart_total_tasks += total
+        chart_done_tasks += done
+        monthly_stats.append(
+            {
+                "month": month_labels[month - 1],
+                "percent": round((done / total) * 100, 2) if total else 0,
+                "pending_percent": round((pending / total) * 100, 2) if total else 0,
+                "total": total,
+                "done": done,
+                "pending": pending,
+            }
+        )
+    return monthly_stats, chart_total_tasks, chart_done_tasks
+
+
 def reports(request):
-    return render(request, "reports.html")
+    token = request.session.get("access_token")
+    scope, scope_error = _resolve_user_scope(request, token)
+    me_response = UserController.get_me(access_token=token) if token else None
+    if me_response is not None and 200 <= me_response.status_code < 300:
+        try:
+            me_payload = me_response.json()
+        except Exception:
+            me_payload = {}
+        if isinstance(me_payload, dict):
+            role_id = me_payload.get("role_id")
+            if role_id == 1:
+                scope = "admin"
+            elif role_id == 2:
+                scope = "manager"
+            elif role_id is not None:
+                scope = "employee"
+
+    if scope == "employee":
+        messages.error(request, "Отчеты доступны только администратору и менеджеру.")
+        return redirect("dashboard")
+
+    if scope == "admin":
+        all_tasks, tasks_error, _ = TasksController.get_all_tasks(access_token=token)
+        employees, employees_error = EmployeeController.get_employees(access_token=token)
+    elif scope == "manager":
+        all_tasks, tasks_error = TasksController.get_current_tasks(access_token=token)
+        employees, employees_error = EmployeeController.get_manager_department_employees(access_token=token)
+    else:
+        messages.error(request, "Не удалось определить роль пользователя для отчетов.")
+        return redirect("dashboard")
+
+    all_tasks = [row for row in all_tasks if isinstance(row, dict)]
+    employees = [row for row in employees if isinstance(row, dict)]
+
+    department_name_map, departments_error = DepartmentController.get_department_name_map()
+    department_options = sorted(
+        department_name_map.items(),
+        key=lambda pair: ((pair[1] or "").lower(), pair[0]),
+    )
+
+    selected_period = (request.GET.get("period") or ("all" if scope == "manager" else "month")).strip().lower()
+    if selected_period not in {"month", "year", "all"}:
+        selected_period = "month"
+    selected_department_raw = (request.GET.get("department_id") or "").strip()
+    selected_employee_raw = (request.GET.get("employee_id") or "").strip()
+    selected_year = date.today().year
+
+    manager_department_name = ""
+    tasks_filtered = list(all_tasks)
+    if scope == "manager":
+        task_form_context = _task_form_context(request)
+        manager_department_id = task_form_context.get("manager_department_id")
+        if manager_department_id is None:
+            selected_department_raw = ""
+            department_options = []
+            tasks_filtered = []
+        else:
+            selected_department_raw = str(manager_department_id)
+            for dep_id, dep_name in task_form_context.get("departments_options") or []:
+                if dep_id == manager_department_id:
+                    manager_department_name = dep_name or ""
+                    break
+            if not manager_department_name:
+                manager_department_name = department_name_map.get(manager_department_id) or "Моё подразделение"
+            department_name_map = {manager_department_id: manager_department_name}
+            department_options = [(manager_department_id, manager_department_name)]
+
+    # Фильтр по подразделению из селектора.
+    if selected_department_raw:
+        selected_dep_str = str(selected_department_raw).strip()
+        filtered_by_id = [
+            row
+            for row in tasks_filtered
+            if row.get("department_id") is not None and str(row.get("department_id")).strip() == selected_dep_str
+        ]
+        if filtered_by_id:
+            tasks_filtered = filtered_by_id
+        elif scope != "manager":
+            selected_dep_name = ""
+            for dep_id, dep_name in department_options:
+                if str(dep_id).strip() == selected_dep_str:
+                    selected_dep_name = (dep_name or "").strip().lower()
+                    break
+            if selected_dep_name:
+                tasks_filtered = [
+                    row
+                    for row in tasks_filtered
+                    if (row.get("department") or "").strip().lower() == selected_dep_name
+                ]
+
+    period_label = _period_label(selected_period)
+    today = date.today()
+    period_tasks = []
+    for row in tasks_filtered:
+        task_date = _task_report_date(row)
+        if task_date is None:
+            if selected_period == "all":
+                period_tasks.append(row)
+            continue
+        if selected_period == "all":
+            period_tasks.append(row)
+        elif selected_period == "month":
+            if task_date.year == today.year and task_date.month == today.month:
+                period_tasks.append(row)
+        elif task_date.year == today.year:
+            period_tasks.append(row)
+
+    action = (request.GET.get("action") or "").strip().lower()
+    if action == "download_tasks_excel":
+        selected_dep_name = "Все подразделения"
+        if selected_department_raw:
+            selected_department_id = _parse_int(selected_department_raw)
+            if selected_department_id is None:
+                selected_dep_name = "Подразделение"
+            else:
+                selected_dep_name = department_name_map.get(selected_department_id, "Подразделение")
+        workbook = _build_tasks_report_excel(period_tasks, selected_dep_name, period_label)
+        file_name = f"tasks_report_{selected_period}_{today.isoformat()}.xlsx"
+        return _xlsx_response(workbook, file_name)
+
+    if action == "download_employees_excel":
+        workbook = _build_employees_report_excel(employees, department_name_map)
+        file_name = f"employees_report_{today.isoformat()}.xlsx"
+        return _xlsx_response(workbook, file_name)
+
+    department_task_report_map = defaultdict(
+        lambda: {
+            "department": "Без подразделения",
+            "total": 0,
+            "done": 0,
+            "planned": 0,
+            "in_progress": 0,
+            "review": 0,
+            "overdue": 0,
+        }
+    )
+    for row in period_tasks:
+        dep_id = row.get("department_id")
+        dep_name = (row.get("department") or "").strip() or department_name_map.get(dep_id) or "Без подразделения"
+        if scope == "manager" and manager_department_name:
+            dep_name = manager_department_name
+        bucket = department_task_report_map[dep_name]
+        bucket["department"] = dep_name
+        bucket["total"] += 1
+        status_name = (row.get("status") or "").strip().lower()
+        if status_name == "выполнено":
+            bucket["done"] += 1
+        elif status_name == "к выполнению":
+            bucket["planned"] += 1
+        elif status_name == "в работе":
+            bucket["in_progress"] += 1
+        elif status_name == "на проверке":
+            bucket["review"] += 1
+        elif status_name == "просрочено":
+            bucket["overdue"] += 1
+
+    department_task_report = []
+    for dep_name in sorted(department_task_report_map.keys(), key=lambda value: value.lower()):
+        row = department_task_report_map[dep_name]
+        total = row["total"]
+        row["done_percent"] = round((row["done"] / total) * 100, 2) if total else 0
+        department_task_report.append(row)
+
+    employee_options = _build_employee_options(employees)
+    selected_employee_id = _parse_int(selected_employee_raw)
+    if selected_employee_id is None and selected_employee_raw:
+        selected_employee_raw = ""
+
+    monthly_stats = []
+    selected_employee_name = ""
+    chart_total_tasks = 0
+    chart_done_tasks = 0
+    if selected_employee_id is not None:
+        for employee_id, employee_name in employee_options:
+            if employee_id == selected_employee_id:
+                selected_employee_name = employee_name
+                break
+        monthly_stats, chart_total_tasks, chart_done_tasks = _build_monthly_employee_stats(
+            tasks_filtered,
+            selected_employee_id,
+            selected_year,
+        )
+
+    return render(
+        request,
+        "reports.html",
+        {
+            "active_page": "reports",
+            "user_scope": scope,
+            "scope_error": scope_error,
+            "tasks_error": tasks_error,
+            "employees_error": employees_error,
+            "departments_error": departments_error,
+            "department_options": department_options,
+            "employee_options": employee_options,
+            "selected_period": selected_period,
+            "selected_department_id": selected_department_raw,
+            "selected_employee_id": selected_employee_raw,
+            "is_manager_reports": scope == "manager",
+            "period_tasks_count": len(period_tasks),
+            "period_tasks_done_count": sum(1 for row in period_tasks if _is_task_done(row)),
+            "period_label": period_label,
+            "department_task_report": department_task_report,
+            "monthly_stats": monthly_stats,
+            "selected_employee_name": selected_employee_name,
+            "chart_total_tasks": chart_total_tasks,
+            "chart_done_tasks": chart_done_tasks,
+            "chart_done_percent": round((chart_done_tasks / chart_total_tasks) * 100, 2) if chart_total_tasks else 0,
+            "selected_year": selected_year,
+        },
+    )
+
+
+def admin_departments(request):
+    token = request.session.get("access_token")
+    scope, _ = _resolve_user_scope(request, token)
+
+    if scope != "admin":
+        messages.error(request, "Доступно только администратору.")
+        return redirect("dashboard")
+
+    department_form_data = {"name": "", "description": ""}
+    department_field_errors = {}
+    update_form_data = {"name": "", "description": ""}
+    update_field_errors = {}
+    edit_department_id = ""
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "department_create":
+            department_form_data = {
+                "name": (request.POST.get("name") or "").strip(),
+                "description": (request.POST.get("description") or "").strip(),
+            }
+            if not department_form_data["name"]:
+                department_field_errors["name"] = "Поле обязательно."
+            if not department_form_data["description"]:
+                department_field_errors["description"] = "Поле обязательно."
+            if department_field_errors:
+                messages.error(request, "Заполните обязательные поля подразделения.")
+            else:
+                payload = {
+                    "name": department_form_data["name"],
+                    "description": department_form_data["description"],
+                }
+                response = DepartmentController.create_department(payload, access_token=token)
+                if response is not None and 200 <= response.status_code < 300:
+                    messages.success(request, "Подразделение создано.")
+                    return redirect("admin_departments")
+                api_error = _extract_response_error(response)
+                department_field_errors = _department_field_errors_from_api(api_error)
+                messages.error(request, f"Ошибка API: {api_error}")
+        elif action == "department_update":
+            dep_id = (request.POST.get("department_id") or "").strip()
+            edit_department_id = dep_id
+            update_form_data = {
+                "name": (request.POST.get("name") or "").strip(),
+                "description": (request.POST.get("description") or "").strip(),
+            }
+            if not update_form_data["name"]:
+                update_field_errors["name"] = "Поле обязательно."
+            if not update_form_data["description"]:
+                update_field_errors["description"] = "Поле обязательно."
+            if not dep_id:
+                messages.error(request, "Некорректный идентификатор подразделения.")
+            elif update_field_errors:
+                messages.error(request, "Заполните обязательные поля подразделения.")
+            else:
+                response = DepartmentController.update_department(dep_id, update_form_data, access_token=token)
+                if response is not None and 200 <= response.status_code < 300:
+                    messages.success(request, "Подразделение обновлено.")
+                    return redirect("admin_departments")
+                api_error = _extract_response_error(response)
+                update_field_errors = _department_field_errors_from_api(api_error)
+                messages.error(request, f"Ошибка API: {api_error}")
+        elif action == "department_delete":
+            dep_id = (request.POST.get("department_id") or "").strip()
+            response = DepartmentController.delete_department(dep_id, access_token=token)
+            if response is not None and 200 <= response.status_code < 300:
+                messages.success(request, "Подразделение удалено.")
+            else:
+                messages.error(request, f"Ошибка API: {_extract_response_error(response)}")
+        if action == "department_delete":
+            return redirect("admin_departments")
+
+    departments, departments_error = DepartmentController.get_departments(access_token=token)
+    return render(
+        request,
+        "admin_departments.html",
+        {
+            "active_page": "admin_departments",
+            "departments": departments,
+            "departments_error": departments_error,
+            "department_form_data": department_form_data,
+            "field_errors": department_field_errors,
+            "update_form_data": update_form_data,
+            "update_field_errors": update_field_errors,
+            "edit_department_id": edit_department_id,
+        },
+    )
+
+
+def admin_users(request):
+    token = request.session.get("access_token")
+    scope, _ = _resolve_user_scope(request, token)
+
+    if scope != "admin":
+        messages.error(request, "Доступно только администратору.")
+        return redirect("dashboard")
+
+    user_form_data = {"username": "", "password": "", "role_id": "3"}
+    user_field_errors = {}
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "user_create":
+            user_form_data = {
+                "username": (request.POST.get("username") or "").strip(),
+                "password": (request.POST.get("password") or "").strip(),
+                "role_id": (request.POST.get("role_id") or "").strip() or "3",
+            }
+            if not user_form_data["username"]:
+                user_field_errors["username"] = "Поле обязательно."
+            if not user_form_data["password"]:
+                user_field_errors["password"] = "Поле обязательно."
+            try:
+                role_id_int = int(user_form_data["role_id"])
+                if role_id_int not in {1, 2, 3}:
+                    raise ValueError
+            except ValueError:
+                user_field_errors["role_id"] = "Выберите корректную роль."
+                role_id_int = 0
+
+            if user_field_errors:
+                messages.error(request, "Заполните обязательные поля пользователя.")
+            else:
+                response = UserController.create_user_as_admin(
+                    username=user_form_data["username"],
+                    password=user_form_data["password"],
+                    role_id=role_id_int,
+                    access_token=token,
+                )
+                if response is not None and 200 <= response.status_code < 300:
+                    messages.success(request, "Пользователь создан администратором.")
+                    return redirect("admin_users")
+                messages.error(request, f"Ошибка API: {_extract_response_error(response)}")
+
+    users_response = UserController.get_users(access_token=token)
+    users = []
+    users_error = None
+    if users_response is None:
+        users_error = "Нет связи с API пользователей."
+    else:
+        try:
+            users_payload = users_response.json()
+        except ValueError:
+            users_payload = {}
+        if 200 <= users_response.status_code < 300:
+            if isinstance(users_payload, dict):
+                users = users_payload.get("items") or []
+        else:
+            users_error = _extract_response_error(users_response)
+
+    return render(
+        request,
+        "admin_users.html",
+        {
+            "active_page": "admin_users",
+            "users": users,
+            "users_error": users_error,
+            "user_form_data": user_form_data,
+            "field_errors": user_field_errors,
+        },
+    )
 
 
 def _task_form_context(request):
     token = request.session.get("access_token")
-    employees, employees_error = EmployeeController.get_employees(access_token=token)
-    department_map, departments_error = DepartmentController.get_department_name_map()
+    scope, _ = _resolve_user_scope(request, token)
+    me_response = UserController.get_me(access_token=token) if token else None
+    me = {}
+    if me_response is not None and 200 <= me_response.status_code < 300:
+        try:
+            me_payload = me_response.json()
+            me = me_payload if isinstance(me_payload, dict) else {}
+        except Exception:
+            me = {}
+
+    if scope == "admin":
+        employees, employees_error = EmployeeController.get_employees(access_token=token)
+    elif scope == "manager":
+        employees, employees_error = EmployeeController.get_manager_department_employees(access_token=token)
+    else:
+        employees, employees_error = [], "Создание задач доступно только администратору и менеджеру."
+    departments, departments_error = DepartmentController.get_departments(access_token=token)
+    department_map = {
+        row.get("id"): row.get("name")
+        for row in departments
+        if isinstance(row, dict) and row.get("id") is not None and row.get("name")
+    }
 
     employees_options = []
+    employee_rows = []
     for row in employees:
         if not isinstance(row, dict):
             continue
-        employee_id = row.get("id")
-        if employee_id is None:
+        user_id = row.get("user_id")
+        if user_id is None:
             continue
+        department_id = row.get("department_id")
         full_name = " ".join(
             part for part in (
                 row.get("last_name") or "",
@@ -348,20 +1378,72 @@ def _task_form_context(request):
                 row.get("middle_name") or "",
             ) if part
         ).strip()
-        employees_options.append((employee_id, full_name or f"Сотрудник #{employee_id}"))
+        employees_options.append((user_id, full_name or f"Сотрудник #{user_id}", department_id))
+        employee_rows.append(row)
     employees_options.sort(key=lambda x: x[1].lower())
 
-    departments_options = sorted(
-        department_map.items(),
-        key=lambda x: ((x[1] or "").lower(), x[0] or 0),
-    )
+    departments_options = sorted(department_map.items(), key=lambda x: ((x[1] or "").lower(), x[0] or 0))
+    manager_department_id = None
+    if scope == "manager":
+        department_ids = sorted(
+            {
+                row.get("department_id")
+                for row in employee_rows
+                if isinstance(row, dict) and row.get("department_id") is not None
+            }
+        )
+        if department_ids:
+            manager_department_id = department_ids[0]
+
+    creator_options = []
+    users_error = None
+
+    if scope == "admin":
+        users_response = UserController.get_users(access_token=token)
+        if users_response is not None and 200 <= users_response.status_code < 300:
+            try:
+                users_payload = users_response.json()
+            except Exception:
+                users_payload = {}
+            users = users_payload.get("items") if isinstance(users_payload, dict) else []
+            manager_department_by_user = {
+                dep.get("department_manager_id"): dep.get("id")
+                for dep in departments
+                if isinstance(dep, dict)
+                and dep.get("department_manager_id") is not None
+                and dep.get("id") is not None
+            }
+            for user in users or []:
+                if not isinstance(user, dict):
+                    continue
+                role_id = user.get("role_id")
+                user_id = user.get("id")
+                if role_id not in (1, 2) or user_id is None:
+                    continue
+                label = f"{user.get('username')} ({'админ' if role_id == 1 else 'менеджер'})"
+                creator_options.append((user_id, label, role_id, manager_department_by_user.get(user_id)))
+        else:
+            users_error = _extract_response_error(users_response)
+    else:
+        me_id = me.get("id")
+        me_username = me.get("username")
+        if me_id is not None and me_username:
+            creator_options = [(me_id, f"{me_username} (менеджер)", 2, manager_department_id)]
 
     return {
         "employees_options": employees_options,
+        "creator_options": creator_options,
         "departments_options": departments_options,
         "employees_error": employees_error,
         "departments_error": departments_error,
-        "form_data": {},
+        "users_error": users_error,
+        "form_data": {
+            "creator_id": str(creator_options[0][0]) if scope == "manager" and creator_options else "",
+            "department_id": str(manager_department_id) if manager_department_id is not None else "",
+        },
+        "user_scope": scope,
+        "me_user_id": me.get("id"),
+        "manager_department_id": manager_department_id,
         "active_page": "tasks_create",
     }
 
@@ -380,62 +1462,97 @@ def _task_form_data_from_post(request):
     }
 
 
-def _render_task_create_with_form_data(request):
+def _render_task_create_with_form_data(request, field_errors=None):
     context = _task_form_context(request)
-    context["form_data"] = _task_form_data_from_post(request)
+    posted = _task_form_data_from_post(request)
+    if context.get("user_scope") == "manager" and context.get("manager_department_id") is not None:
+        posted["department_id"] = str(context["manager_department_id"])
+    if context.get("user_scope") == "manager" and context.get("me_user_id") is not None:
+        posted["creator_id"] = str(context["me_user_id"])
+    context["form_data"] = posted
+    context["field_errors"] = field_errors or {}
     return render(request, "tasks_create.html", context)
 
 
+def _task_create_required_errors(scope, form_data):
+    required_fields = {
+        "title": "Укажите название задачи.",
+        "description": "Укажите описание задачи.",
+        "priority": "Укажите приоритет задачи.",
+        "status": "Укажите статус задачи.",
+        "assignee_id": "Выберите исполнителя задачи.",
+        "start_date": "Укажите дату начала выполнения задачи.",
+        "end_date": "Укажите дату окончания выполнения задачи."
+    }
+    if scope == "admin":
+        required_fields["creator_id"] = "Выберите создателя задачи."
+
+    for field, message in required_fields.items():
+        if form_data.get(field):
+            continue
+        return message, {field: "Поле обязательно."}
+    return None, {}
+
+
 def task_create(request):
+    context = _task_form_context(request)
+    scope = context.get("user_scope")
+    if scope == "employee":
+        messages.error(request, "У сотрудника нет прав на создание задач.")
+        return redirect("dashboard")
+
     if request.method != "POST":
-        return render(request, "tasks_create.html", _task_form_context(request))
+        return render(request, "tasks_create.html", context)
 
     token_or_redirect = _get_required_token(request, "task_create")
     if not isinstance(token_or_redirect, str):
         return token_or_redirect
     token = token_or_redirect
 
-    payload = {}
-    for key in ("title", "description", "priority"):
-        value = (request.POST.get(key) or "").strip()
-        if value:
-            payload[key] = value
+    form_data = _task_form_data_from_post(request)
+    required_error_message, field_errors = _task_create_required_errors(scope, form_data)
+    if required_error_message:
+        messages.error(request, required_error_message)
+        return _render_task_create_with_form_data(request, field_errors)
 
-    start_date = (request.POST.get("start_date") or "").strip()
-    if start_date:
-        payload["planned_start_date"] = start_date
+    payload = {
+        "title": form_data["title"],
+        "description": form_data["description"],
+        "priority": form_data["priority"],
+    }
 
-    end_date = (request.POST.get("end_date") or "").strip()
-    if end_date:
-        payload["planned_end_date"] = end_date
+    if form_data["start_date"]:
+        payload["planned_start_date"] = form_data["start_date"]
+    if form_data["end_date"]:
+        payload["planned_end_date"] = form_data["end_date"]
 
-    status_value = (request.POST.get("status") or "").strip()
-    if status_value:
-        status_map = {
-            "planned": 1,
-            "in_progress": 2,
-            "done": 3,
-            "overdue": 4,
-        }
-        status_id = status_map.get(status_value)
-        if status_id is None:
-            messages.error(request, "Некорректный статус задачи.")
-            return _render_task_create_with_form_data(request)
-        payload["status_id"] = status_id
+    status_id = STATUS_SLUG_TO_ID.get(form_data["status"])
+    if status_id is None:
+        messages.error(request, "Некорректный статус задачи.")
+        return _render_task_create_with_form_data(request, {"status": "Выберите корректный статус."})
+    payload["status_id"] = status_id
 
     for key in ("creator_id", "assignee_id", "department_id"):
-        value = (request.POST.get(key) or "").strip()
+        value = form_data.get(key)
         if not value:
             continue
-        try:
-            payload[key] = int(value)
-        except ValueError:
+        numeric_value = _parse_int(value)
+        if numeric_value is None:
             messages.error(request, f"Некорректное значение поля: {key}.")
-            return _render_task_create_with_form_data(request)
+            return _render_task_create_with_form_data(request, {key: "Некорректное числовое значение."})
+        payload[key] = numeric_value
 
-    if not payload:
-        messages.warning(request, "Нет данных для сохранения.")
-        return _render_task_create_with_form_data(request)
+    if scope == "manager":
+        me_user_id = context.get("me_user_id")
+        if me_user_id is None:
+            messages.error(request, "Не удалось определить текущего менеджера.")
+            return _render_task_create_with_form_data(request, {"creator_id": "Не удалось определить создателя."})
+        payload["creator_id"] = int(me_user_id)
+        manager_department_id = context.get("manager_department_id")
+        if manager_department_id is None:
+            messages.error(request, "Не удалось определить подразделение менеджера.")
+            return _render_task_create_with_form_data(request, {"department_id": "Не удалось определить подразделение."})
+        payload["department_id"] = int(manager_department_id)
 
     response = TasksController.create_task(payload, access_token=token)
     if response is None:
@@ -445,8 +1562,25 @@ def task_create(request):
         messages.success(request, "Задача создана.")
         return redirect("task_create")
 
+    api_error = _extract_response_error(response) or ""
     messages.error(
         request,
-        f"Ошибка API (код {response.status_code}): {_extract_response_error(response)}",
+        f"Ошибка API (код {response.status_code}): {api_error}",
     )
-    return _render_task_create_with_form_data(request)
+    field_errors = {}
+    api_error_lower = api_error.lower()
+    if "title" in api_error_lower or "назван" in api_error_lower:
+        field_errors["title"] = api_error
+    elif "description" in api_error_lower or "описан" in api_error_lower:
+        field_errors["description"] = api_error
+    elif "priority" in api_error_lower or "приоритет" in api_error_lower:
+        field_errors["priority"] = api_error
+    elif "status" in api_error_lower or "статус" in api_error_lower:
+        field_errors["status"] = api_error
+    elif "creator" in api_error_lower or "создател" in api_error_lower:
+        field_errors["creator_id"] = api_error
+    elif "assignee" in api_error_lower or "исполн" in api_error_lower:
+        field_errors["assignee_id"] = api_error
+    elif "department" in api_error_lower or "подраздел" in api_error_lower:
+        field_errors["department_id"] = api_error
+    return _render_task_create_with_form_data(request, field_errors)

@@ -1,9 +1,7 @@
 import requests
-from core import settings
 
+from app.controllers.base_controller import BaseController
 from app.controllers.employee_controller import _page_items
-
-base_url = settings.BASE_URL
 
 
 class DepartmentController:
@@ -21,10 +19,11 @@ class DepartmentController:
 
         while True:
             try:
-                response = requests.get(
-                    f"{base_url}/api/v1/departments",
+                response = BaseController.request(
+                    "get",
+                    "departments",
                     params={"page": page, "size": DepartmentController._PAGE_SIZE},
-                    timeout=30,
+                    headers=BaseController.build_headers(),
                 )
             except requests.RequestException as exc:
                 return name_by_id if name_by_id else {}, f"Нет связи с API (отделы): {exc}"
@@ -54,3 +53,58 @@ class DepartmentController:
             page += 1
 
         return name_by_id, None
+
+    @staticmethod
+    def get_departments(access_token=None):
+        try:
+            response = BaseController.request(
+                "get",
+                "departments",
+                params={"page": 1, "size": DepartmentController._PAGE_SIZE},
+                headers=BaseController.build_headers(access_token=access_token),
+            )
+        except requests.RequestException as exc:
+            return [], f"Нет связи с API (отделы): {exc}"
+        try:
+            data = response.json()
+        except ValueError:
+            return [], f"Некорректный JSON отделов (код {response.status_code})"
+        if not response.ok:
+            detail = data.get("detail") if isinstance(data, dict) else str(data)
+            return [], detail or f"Ошибка API отделов: {response.status_code}"
+        return _page_items(data), None
+
+    @staticmethod
+    def create_department(payload, access_token=None):
+        try:
+            return BaseController.request(
+                "post",
+                "departments",
+                json=payload,
+                headers=BaseController.build_headers(access_token=access_token),
+            )
+        except requests.RequestException:
+            return None
+
+    @staticmethod
+    def update_department(department_id, payload, access_token=None):
+        try:
+            return BaseController.request(
+                "put",
+                f"departments/{int(department_id)}",
+                json=payload,
+                headers=BaseController.build_headers(access_token=access_token),
+            )
+        except (requests.RequestException, ValueError):
+            return None
+
+    @staticmethod
+    def delete_department(department_id, access_token=None):
+        try:
+            return BaseController.request(
+                "delete",
+                f"departments/{int(department_id)}",
+                headers=BaseController.build_headers(access_token=access_token),
+            )
+        except (requests.RequestException, ValueError):
+            return None

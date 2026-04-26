@@ -19,7 +19,8 @@
 
 <section class="card">
     <form class="toolbar-row" method="get" action="{% url 'employees' %}">
-        <input class="input" name="q" type="search" placeholder="Поиск по фамилии (нечеткий)" value="{{ search_query }}">
+        <input class="input" name="q" type="search" placeholder="Поиск по фамилии" value="{{ search_query }}">
+        {% if user_scope != "employee" %}
         <select class="input input--select" name="department">
             <option value="">Все подразделения</option>
             {% for did, dname in departments_options %}
@@ -29,11 +30,14 @@
             <option value="__none__"{% if selected_department == "__none__" %} selected{% endif %}>Без подразделения</option>
             {% endif %}
         </select>
+        {% endif %}
         <button class="btn btn--secondary" type="submit">Применить</button>
+        {% if user_scope != "employee" %}
         <a
             class="btn btn--primary"
             href="{% url 'employees' %}?mode=add&department={{ selected_department|urlencode }}&q={{ search_query|urlencode }}"
         >+ Добавить сотрудника</a>
+        {% endif %}
     </form>
 </section>
 
@@ -52,11 +56,13 @@
 
         <label class="field">
             <span>Фамилия</span>
-            <input class="input" type="text" name="last_name" required value="{{ form_initial.last_name }}">
+            <input class="input{% if field_errors.last_name %} input--error{% endif %}" type="text" name="last_name" required value="{{ form_initial.last_name }}">
+            {% if field_errors.last_name %}<small class="field-error">{{ field_errors.last_name }}</small>{% endif %}
         </label>
         <label class="field">
             <span>Имя</span>
-            <input class="input" type="text" name="first_name" required value="{{ form_initial.first_name }}">
+            <input class="input{% if field_errors.first_name %} input--error{% endif %}" type="text" name="first_name" required value="{{ form_initial.first_name }}">
+            {% if field_errors.first_name %}<small class="field-error">{{ field_errors.first_name }}</small>{% endif %}
         </label>
         <label class="field">
             <span>Отчество</span>
@@ -68,11 +74,13 @@
         </label>
         <label class="field">
             <span>Email</span>
-            <input class="input" type="email" name="email" required value="{{ form_initial.email }}">
+            <input class="input{% if field_errors.email %} input--error{% endif %}" type="email" name="email" required value="{{ form_initial.email }}">
+            {% if field_errors.email %}<small class="field-error">{{ field_errors.email }}</small>{% endif %}
         </label>
         <label class="field field--full">
             <span>Паспортные данные (не менее 10 символов)</span>
-            <input class="input" type="text" name="passport_data" required minlength="10" value="{{ form_initial.passport_data }}">
+            <input class="input{% if field_errors.passport_data %} input--error{% endif %}" type="text" name="passport_data" required minlength="10" value="{{ form_initial.passport_data }}">
+            {% if field_errors.passport_data %}<small class="field-error">{{ field_errors.passport_data }}</small>{% endif %}
         </label>
         <label class="field">
             <span>ИНН (12+ символов, необязательно)</span>
@@ -84,13 +92,14 @@
         </label>
         <label class="field field--full">
             <span>Подразделение</span>
-            <select class="input input--select" name="department_id"{% if departments_options %} required{% endif %}>
+            <select class="input input--select{% if field_errors.department_id %} input--error{% endif %}" name="department_id"{% if departments_options %} required{% endif %}>
                 {% for did, dname in departments_options %}
                 <option value="{{ did }}"{% if form_initial.department_id == did|stringformat:"s" %} selected{% endif %}>{{ dname }}</option>
                 {% empty %}
                 <option value="">— нет справочника отделов —</option>
                 {% endfor %}
             </select>
+            {% if field_errors.department_id %}<small class="field-error">{{ field_errors.department_id }}</small>{% endif %}
         </label>
         <label class="auth-check field--full">
             <input type="checkbox" name="is_active"{% if form_initial.is_active %} checked{% endif %}>
@@ -112,7 +121,13 @@
 <section class="card auth-error" style="margin-bottom: 0;">
     <strong>Не удалось загрузить сотрудников.</strong>
     <p class="muted" style="margin: 8px 0 0;">{{ api_error }}</p>
-    <p class="muted" style="margin: 8px 0 0;">Войдите под учётной записью администратора — endpoint требует прав admin.</p>
+    {% if user_scope == "employee" %}
+    <p class="muted" style="margin: 8px 0 0;">Для обычного пользователя список сотрудников недоступен.</p>
+    {% elif user_scope == "manager" %}
+    <p class="muted" style="margin: 8px 0 0;">Менеджеру доступен только список сотрудников своего подразделения.</p>
+    {% else %}
+    <p class="muted" style="margin: 8px 0 0;">Проверьте права доступа и валидность токена.</p>
+    {% endif %}
 </section>
 {% endif %}
 {% if departments_error and not api_error %}
@@ -132,12 +147,14 @@
         <article class="employee-card">
             <header>
                 <h4>{{ employee.last_name }} {{ employee.first_name }}{% if employee.middle_name %} {{ employee.middle_name }}{% endif %}</h4>
-                <span class="tag tag--info">{% if employee.department_name %}{{ employee.department_name }}{% else %}Отдел №{{ employee.department_id }}{% endif %}</span>
             </header>
             <p><strong>Тел:</strong> {{ employee.phone_number|default:"—" }}</p>
             <p><strong>Email:</strong> {{ employee.email }}</p>
+            {% if user_scope != "employee" %}
             <p><strong>ИНН:</strong> {{ employee.inn|default:"—" }}</p>
             <p><strong>СНИЛС:</strong> {{ employee.snils|default:"—" }}</p>
+            {% endif %}
+            {% if user_scope != "employee" %}
             <div class="employee-actions">
                 <a
                     class="btn btn--secondary"
@@ -149,6 +166,7 @@
                     <button class="btn btn--danger" type="submit">Удалить</button>
                 </form>
             </div>
+            {% endif %}
         </article>
         {% endfor %}
     </div>
@@ -163,7 +181,4 @@
 </div>
 {% endif %}
 {% endfor %}
-{% endblock %}
-
-{% block scripts %}
 {% endblock %}

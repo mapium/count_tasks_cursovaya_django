@@ -5,43 +5,142 @@
 {% block page_subtitle %}Формирование отчетов по задачам и численности сотрудников предприятия{% endblock %}
 
 {% block content %}
+{% if messages %}
+<section class="card" style="margin-bottom: 0;">
+    {% for message in messages %}
+    <p class="{% if 'error' in message.tags %}auth-error{% elif 'success' in message.tags %}muted{% else %}muted{% endif %}" style="margin: 0 0 8px;{% if 'success' in message.tags %} color: var(--success); font-weight: 600;{% endif %}">
+        {{ message }}
+    </p>
+    {% endfor %}
+</section>
+{% endif %}
+
 <div class="reports-layout">
-    <section class="card">
-        <h3>Отчет по задачам подразделения</h3>
-        <p class="muted">По выполнению задач сотрудниками за месяц и за год.</p>
-        <div class="toolbar-row">
-            <select class="input input--select">
-                <option>Выберите подразделение</option>
-                <option>Производство</option>
-                <option>Отдел продаж</option>
-                <option>ИТ-отдел</option>
+    <section class="reports-card">
+        <h3>Отчет по выполнению задач подразделения</h3>
+        <p class="muted">Формирование отчета за месяц/год и выгрузка в Excel.</p>
+        <form method="get" action="{% url 'reports' %}" class="toolbar-row">
+            {% if is_manager_reports %}
+            <select class="input input--select" name="department_id" disabled>
+                <option value="">{{ selected_department_id|yesno:"Моё подразделение,Подразделение не определено" }}</option>
+                {% for dep_id, dep_name in department_options %}
+                {% if selected_department_id == dep_id|stringformat:"s" %}
+                <option value="{{ dep_id }}" selected>{{ dep_name }}</option>
+                {% endif %}
+                {% endfor %}
             </select>
-            <select class="input input--select">
-                <option>Период: месяц</option>
-                <option>Период: год</option>
+            <input type="hidden" name="department_id" value="{{ selected_department_id }}">
+            {% else %}
+            <select class="input input--select" name="department_id">
+                <option value="">Все подразделения</option>
+                {% for dep_id, dep_name in department_options %}
+                <option value="{{ dep_id }}"{% if selected_department_id == dep_id|stringformat:"s" %} selected{% endif %}>{{ dep_name }}</option>
+                {% endfor %}
             </select>
-        </div>
-        <div class="toolbar-row">
-            <button class="btn btn--primary" type="button">Сформировать</button>
-            <button class="btn btn--secondary" type="button">Скачать Word</button>
-            <button class="btn btn--secondary" type="button">Скачать Excel</button>
+            {% endif %}
+            <select class="input input--select" name="period">
+                <option value="month"{% if selected_period == "month" %} selected{% endif %}>Период: месяц</option>
+                <option value="year"{% if selected_period == "year" %} selected{% endif %}>Период: год</option>
+                <option value="all"{% if selected_period == "all" %} selected{% endif %}>Период: всё время</option>
+            </select>
+            <button class="btn btn--primary" type="submit">Показать</button>
+            <button class="btn btn--secondary" type="submit" name="action" value="download_tasks_excel">Скачать Excel</button>
+        </form>
+        <p class="muted" style="margin-top: 8px;">
+            {{ period_label }}. Всего задач: <strong>{{ period_tasks_count }}</strong>,
+            выполнено: <strong>{{ period_tasks_done_count }}</strong>.
+        </p>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Подразделение</th>
+                        <th>Всего</th>
+                        <th>К выполнению</th>
+                        <th>В работе</th>
+                        <th>На проверке</th>
+                        <th>Выполнено</th>
+                        <th>Просрочено</th>
+                        <th>% выполнения</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in department_task_report %}
+                    <tr>
+                        <td>{{ row.department }}</td>
+                        <td>{{ row.total }}</td>
+                        <td>{{ row.planned }}</td>
+                        <td>{{ row.in_progress }}</td>
+                        <td>{{ row.review }}</td>
+                        <td>{{ row.done }}</td>
+                        <td>{{ row.overdue }}</td>
+                        <td>{{ row.done_percent }}%</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8">Нет данных для выбранного периода и подразделения.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </section>
 
-    <section class="card">
+    <section class="card reports-card-side">
         <h3>Отчет по численности сотрудников</h3>
-        <p class="muted">Общее количество сотрудников и распределение по подразделениям.</p>
-        <div class="toolbar-row">
-            <button class="btn btn--primary" type="button">Сформировать</button>
-            <button class="btn btn--secondary" type="button">Скачать Word</button>
-            <button class="btn btn--secondary" type="button">Скачать Excel</button>
-        </div>
+        <p class="muted">Общее количество сотрудников и распределение по подразделениям в Excel.</p>
+        <form method="get" action="{% url 'reports' %}" class="toolbar-row">
+            <button class="btn btn--secondary" type="submit" name="action" value="download_employees_excel">Скачать Excel</button>
+        </form>
     </section>
 
     <section class="card chart-placeholder">
         <h3>Диаграмма выполнения задач сотрудника (помесячно)</h3>
-        <p class="muted">Здесь будет подключение Chart.js/Apache ECharts после интеграции backend API.</p>
-        <div class="chart-mock">График выполнения %</div>
+        <form method="get" action="{% url 'reports' %}" class="toolbar-row">
+            <select class="input input--select" name="employee_id">
+                <option value="">Выберите сотрудника</option>
+                {% for emp_id, emp_name in employee_options %}
+                <option value="{{ emp_id }}"{% if selected_employee_id == emp_id|stringformat:"s" %} selected{% endif %}>{{ emp_name }}</option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="department_id" value="{{ selected_department_id }}">
+            <input type="hidden" name="period" value="{{ selected_period }}">
+            <button class="btn btn--primary" type="submit">Показать диаграмму</button>
+        </form>
+
+        {% if selected_employee_id and monthly_stats %}
+        <p class="muted">
+            {{ selected_employee_name|default:"Сотрудник" }}, {{ selected_year }} год:
+            выполнено <strong>{{ chart_done_tasks }}</strong> из <strong>{{ chart_total_tasks }}</strong>
+            ({{ chart_done_percent }}%).
+        </p>
+        <div class="report-bars-legend">
+            <span class="report-bars-legend__item"><i class="report-bars-legend__mark report-bars-legend__mark--done"></i> Выполнено</span>
+            <span class="report-bars-legend__item"><i class="report-bars-legend__mark report-bars-legend__mark--pending"></i> Невыполнено</span>
+        </div>
+        <div class="report-bars">
+            {% for row in monthly_stats %}
+            <div class="report-bars__row">
+                <div class="report-bars__label">{{ row.month }}</div>
+                <div class="report-bars__track">
+                    <div class="report-bars__fill report-bars__fill--done" style="width: {{ row.percent }}%;"></div>
+                    <div class="report-bars__fill report-bars__fill--pending" style="width: {{ row.pending_percent }}%;"></div>
+                </div>
+                <div class="report-bars__value">{{ row.percent }}% ({{ row.done }}/{{ row.total }}, невыполнено: {{ row.pending }})</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="chart-mock">Выберите сотрудника, чтобы построить диаграмму</div>
+        {% endif %}
     </section>
 </div>
+{% if tasks_error or employees_error or departments_error or scope_error %}
+<section class="card" style="margin-bottom: 0; border-color: #fca5a5;">
+    {% if scope_error %}<p class="muted" style="margin: 0 0 8px;">Ошибка определения роли: {{ scope_error }}</p>{% endif %}
+    {% if tasks_error %}<p class="muted" style="margin: 0 0 8px;">Ошибка загрузки задач: {{ tasks_error }}</p>{% endif %}
+    {% if employees_error %}<p class="muted" style="margin: 0 0 8px;">Ошибка загрузки сотрудников: {{ employees_error }}</p>{% endif %}
+    {% if departments_error %}<p class="muted" style="margin: 0;">Ошибка загрузки подразделений: {{ departments_error }}</p>{% endif %}
+</section>
+{% endif %}
 {% endblock %}

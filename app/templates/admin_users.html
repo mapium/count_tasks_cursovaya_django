@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+
+{% block title %}Управление пользователями | Kanban Enterprise{% endblock %}
+{% block page_title %}Управление пользователями{% endblock %}
+{% block page_subtitle %}Список пользователей и регистрация администратором{% endblock %}
+
+{% block content %}
+{% if messages %}
+<section class="card" style="margin-bottom: 0;">
+    {% for message in messages %}
+    <p class="{% if 'error' in message.tags %}auth-error{% else %}muted{% endif %}" style="margin: 0 0 8px;{% if 'success' in message.tags %} color: var(--success); font-weight: 600;{% endif %}">{{ message }}</p>
+    {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+    <h3>Регистрация пользователя администратором</h3>
+    <form class="toolbar-row" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="user_create">
+        <input class="input{% if field_errors.username %} input--error{% endif %}" name="username" type="text" placeholder="Логин" required value="{{ user_form_data.username|default:'' }}">
+        <input class="input{% if field_errors.password %} input--error{% endif %}" name="password" type="password" placeholder="Пароль" required value="{{ user_form_data.password|default:'' }}">
+        <select class="input input--select{% if field_errors.role_id %} input--error{% endif %}" name="role_id" required>
+            <option value="1"{% if user_form_data.role_id == "1" %} selected{% endif %}>Администратор</option>
+            <option value="2"{% if user_form_data.role_id == "2" %} selected{% endif %}>Менеджер</option>
+            <option value="3"{% if user_form_data.role_id == "3" or not user_form_data.role_id %} selected{% endif %}>Сотрудник</option>
+        </select>
+        <button class="btn btn--primary" type="submit">Зарегистрировать</button>
+    </form>
+    {% if field_errors.username %}<small class="field-error">{{ field_errors.username }}</small>{% endif %}
+    {% if field_errors.password %}<small class="field-error">{{ field_errors.password }}</small>{% endif %}
+    {% if field_errors.role_id %}<small class="field-error">{{ field_errors.role_id }}</small>{% endif %}
+    {% if users_error %}
+    <p class="auth-error">{{ users_error }}</p>
+    {% endif %}
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>ID</th><th>Логин</th><th>Роль</th></tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.role_id }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" class="muted">Пользователи не найдены</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

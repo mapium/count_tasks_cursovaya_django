@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static date_formatters %}
 {% block title %}Kanban-доска | Kanban Enterprise{% endblock %}
 {% block page_title %}Kanban-доска задач{% endblock %}
 {% block page_subtitle %}Контроль выполнения производственных задач по сотрудникам и подразделениям{% endblock %}
@@ -7,33 +8,59 @@
 <div class="stats-grid">
     <article class="stat-card">
         <p class="muted">Всего задач</p>
-        <h3>128</h3>
+        <h3>{{ stats.total }}</h3>
     </article>
     <article class="stat-card">
-        <p class="muted">Выполнено за месяц</p>
-        <h3>76</h3>
+        <p class="muted">Выполнено</p>
+        <h3>{{ stats.done }}</h3>
+    </article>
+    <article class="stat-card">
+        <p class="muted">На проверке</p>
+        <h3>{{ stats.review }}</h3>
     </article>
     <article class="stat-card">
         <p class="muted">Просрочено</p>
-        <h3 class="danger">12</h3>
+        <h3 class="danger">{{ stats.overdue }}</h3>
     </article>
     <article class="stat-card">
-        <p class="muted">Сотрудников в работе</p>
-        <h3>43</h3>
+        <p class="muted">В работе</p>
+        <h3>{{ stats.in_progress }}</h3>
     </article>
 </div>
 
+{% if tasks_error %}
+<section class="card auth-error" style="margin-bottom:0;">
+    <strong>Не удалось загрузить задачи.</strong>
+    <p class="muted" style="margin:8px 0 0;">{{ tasks_error }}</p>
+</section>
+{% endif %}
+
 <section class="board-toolbar card">
     <div class="toolbar-row">
-        <select class="input input--select" id="departmentFilter">
-            <option value="">Все подразделения</option>
-            <option value="production">Производство</option>
-            <option value="sales">Отдел продаж</option>
-            <option value="it">ИТ-отдел</option>
+        {% if user_scope == "employee" %}
+        <select class="input input--select" id="taskScopeFilter">
+            <option value="my"{% if task_scope == "my" %} selected{% endif %}>Мои задачи</option>
+            <option value="department"{% if task_scope == "department" %} selected{% endif %}>Задачи подразделения</option>
         </select>
+        {% endif %}
+        {% if user_scope != "employee" %}
+        <select class="input input--select" id="departmentFilter"{% if user_scope != "admin" %} disabled{% endif %}>
+            <option value="">{{ department_filter_label|default:"Все подразделения" }}</option>
+            {% for did, dname in departments_filter_options %}
+            <option value="{{ did }}"{% if selected_department == did|stringformat:"s" %} selected{% endif %}>{{ dname }}</option>
+            {% endfor %}
+        </select>
+        <select class="input input--select" id="assigneeFilter">
+            <option value="">Все сотрудники</option>
+            {% for assignee_name in assignee_filter_options %}
+            <option value="{{ assignee_name }}"{% if selected_assignee == assignee_name %} selected{% endif %}>{{ assignee_name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
         <select class="input input--select" id="periodFilter">
-            <option value="month">Текущий месяц</option>
-            <option value="year">Текущий год</option>
+            <option value="all"{% if selected_period == "all" %} selected{% endif %}>Весь период</option>
+            <option value="month"{% if selected_period == "month" %} selected{% endif %}>Текущий месяц</option>
+            <option value="year"{% if selected_period == "year" %} selected{% endif %}>Текущий год</option>
         </select>
         <button class="btn btn--secondary" type="button">Экспорт в Excel</button>
         <button class="btn btn--secondary" type="button">Экспорт в Word</button>
@@ -43,78 +70,138 @@
 <section class="kanban" id="kanbanBoard">
     <article class="kanban-column" data-status="planned">
         <header class="kanban-column__head">
-            <h4>Запланировано</h4>
-            <span class="badge">14</span>
+            <h4>К выполнению</h4>
+            <span class="badge" data-counter="planned">{{ counts.planned }}</span>
         </header>
         <div class="kanban-tasks">
-            <div class="task-card" draggable="true">
-                <h5>Подготовить отчет по линии А</h5>
-                <p>Назначено: Иванов И.И.</p>
+            {% for task in tasks_grouped.planned %}
+            <div class="task-card{% if task.is_overdue %} task-card--overdue{% endif %}" draggable="true" data-id="{{ task.id }}">
+                <div class="task-head">
+                    <h5><a class="task-title-link" href="{% url 'task_detail' task.id %}{% if task_scope %}?task_scope={{ task_scope|urlencode }}{% endif %}">{{ task.title }}</a></h5>
+                    <span class="tag tag--info">{{ task.department|default:"Отдел" }}</span>
+                </div>
+                <p>Исполнитель: {{ task.assignee }}</p>
+                <p>Приоритет: {{ task.priority|default:"—" }}</p>
                 <div class="task-meta">
-                    <span>Срок: 15.04.2026</span>
-                    <span class="tag tag--warning">Важно</span>
+                    <span>Срок: {{ task.planned_end_date|ru_date|default:"—" }}</span>
+                    <span class="tag task-status
+                        {% if task.status_name == 'К выполнению' %}task-status--planned
+                        {% elif task.status_name == 'В работе' %}task-status--progress
+                        {% elif task.status_name == 'На проверке' %}task-status--review
+                        {% elif task.status_name == 'Выполнено' %}task-status--done
+                        {% else %}task-status--overdue{% endif %}">
+                        {{ task.status_name|default:"К выполнению" }}
+                    </span>
                 </div>
             </div>
-            <div class="task-card" draggable="true">
-                <h5>Проверка оборудования участка №2</h5>
-                <p>Назначено: Петров П.П.</p>
-                <div class="task-meta">
-                    <span>Срок: 18.04.2026</span>
-                    <span class="tag">План</span>
-                </div>
-            </div>
+            {% empty %}
+            <p class="muted">Нет задач</p>
+            {% endfor %}
         </div>
     </article>
 
     <article class="kanban-column" data-status="in_progress">
         <header class="kanban-column__head">
             <h4>В работе</h4>
-            <span class="badge badge--purple">27</span>
+            <span class="badge badge--purple" data-counter="in_progress">{{ counts.in_progress }}</span>
         </header>
         <div class="kanban-tasks">
-            <div class="task-card" draggable="true">
-                <h5>Инвентаризация склада</h5>
-                <p>Назначено: Сидоров С.С.</p>
+            {% for task in tasks_grouped.in_progress %}
+            <div class="task-card{% if task.is_overdue %} task-card--overdue{% endif %}" draggable="true" data-id="{{ task.id }}">
+                <div class="task-head">
+                    <h5><a class="task-title-link" href="{% url 'task_detail' task.id %}{% if task_scope %}?task_scope={{ task_scope|urlencode }}{% endif %}">{{ task.title }}</a></h5>
+                    <span class="tag tag--info">{{ task.department|default:"Отдел" }}</span>
+                </div>
+                <p>Исполнитель: {{ task.assignee }}</p>
+                <p>Приоритет: {{ task.priority|default:"—" }}</p>
                 <div class="task-meta">
-                    <span>Срок: 12.04.2026</span>
-                    <span class="tag tag--info">Производство</span>
+                    <span>Срок: {{ task.planned_end_date|ru_date|default:"—" }}</span>
+                    <span class="tag task-status
+                        {% if task.status_name == 'К выполнению' %}task-status--planned
+                        {% elif task.status_name == 'В работе' %}task-status--progress
+                        {% elif task.status_name == 'На проверке' %}task-status--review
+                        {% elif task.status_name == 'Выполнено' %}task-status--done
+                        {% else %}task-status--overdue{% endif %}">
+                        {{ task.status_name|default:"В работе" }}
+                    </span>
                 </div>
             </div>
+            {% empty %}
+            <p class="muted">Нет задач</p>
+            {% endfor %}
+        </div>
+    </article>
+
+    <article class="kanban-column" data-status="review">
+        <header class="kanban-column__head">
+            <h4>На проверке</h4>
+            <span class="badge badge--purple" data-counter="review">{{ counts.review }}</span>
+        </header>
+        <div class="kanban-tasks">
+            {% for task in tasks_grouped.review %}
+            <div class="task-card{% if task.is_overdue %} task-card--overdue{% endif %}" draggable="true" data-id="{{ task.id }}">
+                <div class="task-head">
+                    <h5><a class="task-title-link" href="{% url 'task_detail' task.id %}{% if task_scope %}?task_scope={{ task_scope|urlencode }}{% endif %}">{{ task.title }}</a></h5>
+                    <span class="tag tag--info">{{ task.department|default:"Отдел" }}</span>
+                </div>
+                <p>Исполнитель: {{ task.assignee }}</p>
+                <p>Приоритет: {{ task.priority|default:"—" }}</p>
+                <div class="task-meta">
+                    <span>Срок: {{ task.planned_end_date|ru_date|default:"—" }}</span>
+                    <span class="tag task-status
+                        {% if task.status_name == 'К выполнению' %}task-status--planned
+                        {% elif task.status_name == 'В работе' %}task-status--progress
+                        {% elif task.status_name == 'На проверке' %}task-status--review
+                        {% elif task.status_name == 'Выполнено' %}task-status--done
+                        {% else %}task-status--overdue{% endif %}">
+                        {{ task.status_name|default:"На проверке" }}
+                    </span>
+                </div>
+            </div>
+            {% empty %}
+            <p class="muted">Нет задач</p>
+            {% endfor %}
         </div>
     </article>
 
     <article class="kanban-column" data-status="done">
         <header class="kanban-column__head">
             <h4>Выполнено</h4>
-            <span class="badge badge--green">76</span>
+            <span class="badge badge--green" data-counter="done">{{ counts.done }}</span>
         </header>
         <div class="kanban-tasks">
-            <div class="task-card" draggable="true">
-                <h5>Согласование графика смен</h5>
-                <p>Исполнитель: Алексеева М.А.</p>
+            {% for task in tasks_grouped.done %}
+            <div class="task-card{% if task.is_overdue %} task-card--overdue{% endif %}" draggable="true" data-id="{{ task.id }}">
+                <div class="task-head">
+                    <h5><a class="task-title-link" href="{% url 'task_detail' task.id %}{% if task_scope %}?task_scope={{ task_scope|urlencode }}{% endif %}">{{ task.title }}</a></h5>
+                    <span class="tag tag--info">{{ task.department|default:"Отдел" }}</span>
+                </div>
+                <p>Исполнитель: {{ task.assignee }}</p>
+                <p>Приоритет: {{ task.priority|default:"—" }}</p>
                 <div class="task-meta">
-                    <span>Закрыта: 05.04.2026</span>
-                    <span class="tag tag--success">Готово</span>
+                    <span>Срок: {{ task.planned_end_date|ru_date|default:"—" }}</span>
+                    <span class="tag task-status
+                        {% if task.status_name == 'К выполнению' %}task-status--planned
+                        {% elif task.status_name == 'В работе' %}task-status--progress
+                        {% elif task.status_name == 'На проверке' %}task-status--review
+                        {% elif task.status_name == 'Выполнено' %}task-status--done
+                        {% else %}task-status--overdue{% endif %}">
+                        {{ task.status_name|default:"Выполнено" }}
+                    </span>
                 </div>
             </div>
-        </div>
-    </article>
-
-    <article class="kanban-column" data-status="overdue">
-        <header class="kanban-column__head">
-            <h4>Просрочено</h4>
-            <span class="badge badge--red">12</span>
-        </header>
-        <div class="kanban-tasks">
-            <div class="task-card" draggable="true">
-                <h5>Обновление регламента ТБ</h5>
-                <p>Исполнитель: Кузнецов Д.Н.</p>
-                <div class="task-meta">
-                    <span>Срок: 01.04.2026</span>
-                    <span class="tag tag--danger">Просрочка</span>
-                </div>
-            </div>
+            {% empty %}
+            <p class="muted">Нет задач</p>
+            {% endfor %}
         </div>
     </article>
 </section>
+{% csrf_token %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.DASHBOARD_STATUS_UPDATE_URL = "{% url 'dashboard_task_status_update' %}";
+</script>
+<script src="{% static 'js/kanban.js' %}"></script>
 {% endblock %}

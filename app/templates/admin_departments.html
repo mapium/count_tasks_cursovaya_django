@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block title %}Управление подразделениями | Kanban Enterprise{% endblock %}
+{% block page_title %}Управление подразделениями{% endblock %}
+{% block page_subtitle %}CRUD операции для подразделений{% endblock %}
+
+{% block content %}
+{% if messages %}
+<section class="card" style="margin-bottom: 0;">
+    {% for message in messages %}
+    <p class="{% if 'error' in message.tags %}auth-error{% else %}muted{% endif %}" style="margin: 0 0 8px;{% if 'success' in message.tags %} color: var(--success); font-weight: 600;{% endif %}">{{ message }}</p>
+    {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+    <h3>Создать подразделение</h3>
+    <form class="form-grid" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="department_create">
+        <label class="field" style="max-width: 360px;">
+            <span>Название</span>
+            <input class="input{% if field_errors.name %} input--error{% endif %}" name="name" type="text" placeholder="Название подразделения" required value="{{ department_form_data.name|default:'' }}">
+            {% if field_errors.name %}<small class="field-error">{{ field_errors.name }}</small>{% endif %}
+        </label>
+        <label class="field field--full">
+            <span>Описание</span>
+            <textarea class="input textarea{% if field_errors.description %} input--error{% endif %}" name="description" placeholder="Краткое описание" required>{{ department_form_data.description|default:'' }}</textarea>
+            {% if field_errors.description %}<small class="field-error">{{ field_errors.description }}</small>{% endif %}
+        </label>
+        <div class="field field--full">
+            <button class="btn btn--primary" type="submit">Создать подразделение</button>
+        </div>
+    </form>
+</section>
+
+{% if departments_error %}
+<section class="card auth-error" style="margin-bottom:0;">
+    <p class="muted">{{ departments_error }}</p>
+</section>
+{% endif %}
+
+{% for dep in departments %}
+<section class="card">
+    <div class="task-head" style="margin-bottom: 10px;">
+        <h3 style="margin: 0;">{{ dep.name }}</h3>
+        <span class="tag tag--info">ID {{ dep.id }}</span>
+    </div>
+    <p class="muted" style="margin-bottom: 12px;">{{ dep.description|default:"—" }}</p>
+    <div class="toolbar-row" style="margin-bottom: 8px;">
+        <button class="btn btn--secondary js-toggle-department-edit" type="button" data-target-id="dep-edit-{{ dep.id }}">Редактировать</button>
+    </div>
+    <form class="form-grid" method="post" id="dep-edit-{{ dep.id }}" novalidate style="{% if edit_department_id == dep.id|stringformat:'s' %}display:grid;{% else %}display:none;{% endif %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="department_update">
+        <input type="hidden" name="department_id" value="{{ dep.id }}">
+        <label class="field" style="max-width: 360px;">
+            <span>Название</span>
+            <input class="input{% if edit_department_id == dep.id|stringformat:'s' and update_field_errors.name %} input--error{% endif %}" name="name" value="{% if edit_department_id == dep.id|stringformat:'s' %}{{ update_form_data.name|default:'' }}{% else %}{{ dep.name }}{% endif %}" required>
+            {% if edit_department_id == dep.id|stringformat:'s' and update_field_errors.name %}<small class="field-error">{{ update_field_errors.name }}</small>{% endif %}
+        </label>
+        <label class="field field--full">
+            <span>Описание</span>
+            <textarea class="input textarea{% if edit_department_id == dep.id|stringformat:'s' and update_field_errors.description %} input--error{% endif %}" name="description" required>{% if edit_department_id == dep.id|stringformat:'s' %}{{ update_form_data.description|default:'' }}{% else %}{{ dep.description|default:'' }}{% endif %}</textarea>
+            {% if edit_department_id == dep.id|stringformat:'s' and update_field_errors.description %}<small class="field-error">{{ update_field_errors.description }}</small>{% endif %}
+        </label>
+        <div class="field field--full toolbar-row">
+            <button class="btn btn--secondary" type="submit">Сохранить изменения</button>
+        </div>
+    </form>
+    <form method="post" style="margin-top: 8px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="department_delete">
+        <input type="hidden" name="department_id" value="{{ dep.id }}">
+        <button class="btn btn--danger" type="submit">Удалить подразделение</button>
+    </form>
+</section>
+{% empty %}
+<section class="card">
+    <p class="muted">Подразделения не найдены.</p>
+</section>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".js-toggle-department-edit").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var targetId = btn.getAttribute("data-target-id");
+                var form = document.getElementById(targetId);
+                if (!form) return;
+                var isHidden = form.style.display === "none" || !form.style.display;
+                form.style.display = isHidden ? "grid" : "none";
+                btn.textContent = isHidden ? "Скрыть редактирование" : "Редактировать";
+            });
+        });
+    });
+</script>
+{% endblock %}

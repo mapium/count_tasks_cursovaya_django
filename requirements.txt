@@ -1,3 +1,4 @@
 psycopg2==2.9.11
 Django==6.0.4
 requests==2.33.1
+openpyxl==3.1.5
