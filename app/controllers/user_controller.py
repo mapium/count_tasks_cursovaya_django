@@ -4,6 +4,9 @@ from app.controllers.base_controller import BaseController
 class UserController:
     @staticmethod
     def login_user(username: str, password: str):
+        """Авторизует пользователя через endpoint `auth/login`.
+        Отправляет form-urlencoded payload и возвращает raw HTTP-ответ API.
+        """
         payload = {
             'username': username,
             'password': password,
@@ -18,10 +21,16 @@ class UserController:
 
     @staticmethod
     def logout_user():
+        """Заглушка для выхода пользователя на стороне клиента.
+        Сейчас не вызывает API и всегда возвращает `None`.
+        """
         return None
 
     @staticmethod
     def get_users(access_token=None):
+        """Запрашивает список пользователей из API.
+        Передает Bearer токен и возвращает HTTP-ответ без дополнительной обработки.
+        """
         return BaseController.request(
             "get",
             "users",
@@ -30,6 +39,9 @@ class UserController:
 
     @staticmethod
     def create_user_as_admin(username: str, password: str, role_id: int, access_token=None):
+        """Создает пользователя от имени администратора через `accounts/sign_up_as_admin`.
+        Передает логин, пароль и роль как form-urlencoded данные.
+        """
         payload = {
             "username": username,
             "password": password,
@@ -47,8 +59,32 @@ class UserController:
 
     @staticmethod
     def get_me(access_token=None):
+        """Получает профиль текущего пользователя (`users/me`).
+        Используется для определения роли и контекста текущей сессии.
+        """
         return BaseController.request(
             "get",
             "users/me",
             headers=BaseController.build_headers(access_token=access_token),
         )
+
+    @staticmethod
+    def register_user(username: str, password: str):
+        """Регистрирует обычного пользователя через публичный endpoint API.
+        Пытается отправить form-urlencoded payload в стандартные пути регистрации.
+        """
+        payload = {
+            "username": username,
+            "password": password,
+            "role_id": "3",
+        }
+        headers = BaseController.build_headers(content_type="application/x-www-form-urlencoded")
+        response = BaseController.request(
+            "post",
+            endpoint="accounts/sign_up",
+            data=payload,
+            headers=headers,
+        )
+        if response.status_code != 404:
+            return response
+        return headers

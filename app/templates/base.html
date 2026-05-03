@@ -7,7 +7,7 @@
     <title>{% block title %}Kaban Enterprise{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Onest:wght@100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
     {% block head_extra %}{% endblock %}
 </head>
@@ -15,9 +15,9 @@
     <div class="app-shell">
         <aside class="sidebar">
             <div class="brand">
-                <div class="brand__logo">K</div>
+                <div class="brand__logo"><img src="{% static 'img/logo.png' %}" height="40" alt="Logo"></div>
                 <div class="brand__text">
-                    <h1>Kaban Enterprise</h1>
+                    <h1>Вектор Управления</h1>
                     <p>Учет производственных задач</p>
                 </div>
             </div>
@@ -52,7 +52,7 @@
             <div class="sidebar__footer">
                 <p class="muted">Пользователь: <strong>{{ current_username }}</strong></p>
                 <p class="muted">Роль: <strong id="roleBadge">{{ current_role_label }}</strong></p>
-                <a class="btn btn--ghost btn--block logout--btn" href="{% url 'auth' %}">Выйти</a>
+                <a class="btn btn--ghost btn--block logout--btn" href="{% url 'logout' %}">Выйти</a>
             </div>
         </aside>
 
@@ -60,7 +60,7 @@
             <header class="topbar">
                 <div class="topbar__left">
                     <h2>{% block page_title %}Панель управления{% endblock %}</h2>
-                    <p class="muted">{% block page_subtitle %}Современная вёрстка под Django + API{% endblock %}</p>
+
                 </div>
             </header>
 

@@ -3,6 +3,9 @@ from app.controllers.base_controller import BaseController
 
 
 def _page_items(payload):
+    """Приводит ответ API задач к списку элементов.
+    Поддерживает list и словари с ключами `items/results/data`.
+    """
     if isinstance(payload, list):
         return payload
     if not isinstance(payload, dict):
@@ -17,6 +20,9 @@ def _page_items(payload):
 class TasksController:
     @staticmethod
     def create_task(payload, access_token=None):
+        """Создает задачу через `POST /tasks` с JSON payload.
+        Возвращает raw ответ API или `None`, если запрос не выполнен.
+        """
         try:
             return BaseController.request(
                 "post",
@@ -29,6 +35,9 @@ class TasksController:
 
     @staticmethod
     def get_current_tasks(access_token=None):
+        """Получает задачи текущего подразделения (`tasks/my-department`).
+        Возвращает `(tasks, error)` с унифицированной обработкой ошибок API/JSON.
+        """
         try:
             response = BaseController.request(
                 "get",
@@ -53,6 +62,9 @@ class TasksController:
 
     @staticmethod
     def get_my_tasks(access_token=None):
+        """Получает задачи текущего пользователя (`tasks/my`).
+        Возвращает `(tasks, error)` и текст причины при неуспешном ответе API.
+        """
         try:
             response = BaseController.request(
                 "get",
@@ -77,6 +89,9 @@ class TasksController:
 
     @staticmethod
     def get_all_tasks(access_token=None):
+        """Запрашивает агрегированный список задач по подразделениям (`GET /tasks`).
+        Разворачивает вложенный формат в плоский список и возвращает флаг ошибки доступа 403.
+        """
         try:
             response = BaseController.request(
                 "get",
@@ -120,6 +135,9 @@ class TasksController:
 
     @staticmethod
     def update_task_status(task_id, status_name, access_token=None):
+        """Меняет статус задачи через `PATCH /tasks/{id}/status`.
+        Отправляет `status_name` и возвращает `None` при сетевой ошибке или неверном id.
+        """
         try:
             return BaseController.request(
                 "patch",
@@ -132,6 +150,9 @@ class TasksController:
 
     @staticmethod
     def update_task(task_id, payload, access_token=None):
+        """Полностью обновляет задачу через `PUT /tasks/{id}`.
+        При ошибках соединения/валидации id возвращает `None`.
+        """
         try:
             return BaseController.request(
                 "put",
@@ -144,6 +165,9 @@ class TasksController:
 
     @staticmethod
     def add_comment(task_id, comment_text, access_token=None):
+        """Добавляет комментарий к задаче (`POST /tasks/{id}/comments`).
+        Формирует JSON с `comment_text` и возвращает raw ответ API.
+        """
         try:
             return BaseController.request(
                 "post",
@@ -156,6 +180,9 @@ class TasksController:
 
     @staticmethod
     def get_task_comments(task_id, access_token=None):
+        """Загружает список комментариев задачи (`GET /tasks/{id}/comments`).
+        Возвращает `(comments, error)` и валидирует, что тело ответа является списком.
+        """
         try:
             response = BaseController.request(
                 "get",
@@ -182,6 +209,9 @@ class TasksController:
 
     @staticmethod
     def delete_task(task_id, access_token=None):
+        """Удаляет задачу через `DELETE /tasks/{id}`.
+        Возвращает raw HTTP-ответ API либо `None` при исключении.
+        """
         try:
             return BaseController.request(
                 "delete",

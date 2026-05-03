@@ -1,0 +1,33 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Нет доступа | Kanban Enterprise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+    <div class="auth-layout">
+        <section class="auth-side">
+            <div class="brand">
+                <div class="brand__logo">K</div>
+                <div class="brand__text">
+                    <h1>Kanban Enterprise</h1>
+                    <p>Учет производственных задач</p>
+                </div>
+            </div>
+            <h2>Доступ ограничен</h2>
+            <p>Ваша сессия неактивна или истекла. Для продолжения работы необходимо авторизоваться.</p>
+        </section>
+        <section class="auth-card">
+            <h3>Нет доступа</h3>
+            <p class="auth-error">Требуется активный токен пользователя.</p>
+            <a class="btn btn--primary btn--block" href="{% url 'auth' %}?mode=login">Перейти к входу</a>
+        </section>
+    </div>
+</body>
+</html>

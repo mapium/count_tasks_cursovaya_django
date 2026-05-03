@@ -1,8 +1,7 @@
 {% extends 'base.html' %}
 {% load static date_formatters %}
 {% block title %}Kanban-доска | Kanban Enterprise{% endblock %}
-{% block page_title %}Kanban-доска задач{% endblock %}
-{% block page_subtitle %}Контроль выполнения производственных задач по сотрудникам и подразделениям{% endblock %}
+{% block page_title %}Доска задач{% endblock %}
 
 {% block content %}
 <div class="stats-grid">
@@ -62,8 +61,9 @@
             <option value="month"{% if selected_period == "month" %} selected{% endif %}>Текущий месяц</option>
             <option value="year"{% if selected_period == "year" %} selected{% endif %}>Текущий год</option>
         </select>
-        <button class="btn btn--secondary" type="button">Экспорт в Excel</button>
-        <button class="btn btn--secondary" type="button">Экспорт в Word</button>
+        {% if user_scope != "employee" %}
+        <a class="btn btn--secondary" href="{% url 'reports' %}?action=download_tasks_excel&period={{ selected_period|urlencode }}{% if selected_department %}&department_id={{ selected_department|urlencode }}{% endif %}">Экспорт в Excel</a>
+        {% endif %}
     </div>
 </section>
 

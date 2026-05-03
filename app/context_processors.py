@@ -3,6 +3,9 @@ import json
 
 
 def _username_from_access_token(token):
+    """Извлекает `sub` из JWT access token без проверки подписи.
+    При невалидном токене или ошибке декодирования возвращает пустую строку.
+    """
     if not token or token.count(".") < 2:
         return ""
     try:
@@ -16,6 +19,9 @@ def _username_from_access_token(token):
 
 
 def current_user_ui(request):
+    """Формирует данные пользователя для общего UI-контекста шаблонов.
+    Берет роль из сессии, логин из сессии/JWT и возвращает безопасные значения по умолчанию.
+    """
     role_map = {
         "admin": "Администратор",
         "manager": "Менеджер подразделения",

@@ -30,8 +30,23 @@
         </section>
 
         <section class="auth-card">
-            <h3>Вход в систему</h3>
-            <p class="muted">Введите логин и пароль сотрудника</p>
+            <h3>{% if auth_mode == "register" %}Регистрация{% else %}Вход в систему{% endif %}</h3>
+            <p class="muted">
+                {% if auth_mode == "register" %}
+                {% else %}
+                {% endif %}
+            </p>
+
+            {% if messages %}
+            {% for message in messages %}
+            <p class="{% if 'error' in message.tags %}auth-error{% else %}muted{% endif %}" role="alert">{{ message }}</p>
+            {% endfor %}
+            {% endif %}
+
+            <div class="toolbar-row" style="margin-bottom: 10px;">
+                <a class="btn {% if auth_mode == 'login' %}btn--primary{% else %}btn--secondary{% endif %}" href="{% url 'auth' %}?mode=login">Вход</a>
+                <a class="btn {% if auth_mode == 'register' %}btn--primary{% else %}btn--secondary{% endif %}" href="{% url 'auth' %}?mode=register">Регистрация</a>
+            </div>
 
             {% if error %}
             <p class="auth-error" role="alert">{{ error }}{% if error_message %} — {{ error_message }}{% endif %}</p>
@@ -39,20 +54,27 @@
 
             <form class="auth-form" method="post" action="{% url 'auth' %}">
                 {% csrf_token %}
+                <input type="hidden" name="mode" value="{{ auth_mode|default:'login' }}">
                 <label class="field">
                     <span>Логин / Email</span>
-                    <input class="input" type="text" placeholder="name@company.ru" name="username">
+                    <input class="input{% if field_errors.username %} input--error{% endif %}" type="text" placeholder="name@company.ru" name="username" value="{{ form_username|default:'' }}">
+                    {% if field_errors.username %}<small class="field-error">{{ field_errors.username }}</small>{% endif %}
                 </label>
                 <label class="field">
                     <span>Пароль</span>
-                    <input class="input" type="password" placeholder="••••••••" name="password">
+                    <input class="input{% if field_errors.password %} input--error{% endif %}" type="password" placeholder="••••••••" name="password">
+                    {% if field_errors.password %}<small class="field-error">{{ field_errors.password }}</small>{% endif %}
                 </label>
-                <label class="auth-check">
-                    <input type="checkbox">
-                    <span>Запомнить меня</span>
+                {% if auth_mode == "register" %}
+                <label class="field">
+                    <span>Подтверждение пароля</span>
+                    <input class="input{% if field_errors.confirm_password %} input--error{% endif %}" type="password" placeholder="••••••••" name="confirm_password">
+                    {% if field_errors.confirm_password %}<small class="field-error">{{ field_errors.confirm_password }}</small>{% endif %}
                 </label>
-
+                <button class="btn btn--primary btn--block" type="submit">Зарегистрироваться</button>
+                {% else %}
                 <button class="btn btn--primary btn--block" type="submit">Войти</button>
+                {% endif %}
             </form>
         </section>
     </div>

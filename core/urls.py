@@ -21,6 +21,8 @@ from app import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('auth/', views.auth, name='auth'),
+    path('logout/', views.logout_view, name='logout'),
+    path('no-access/', views.no_access, name='no_access'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('dashboard/tasks/<int:task_id>/', views.task_detail, name='task_detail'),
     path('dashboard/tasks/status-update/', views.dashboard_task_status_update, name='dashboard_task_status_update'),

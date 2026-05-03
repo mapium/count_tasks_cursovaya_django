@@ -38,6 +38,9 @@ STATUS_NAME_TO_ID = {
 
 
 def _extract_response_error(response):
+    """Извлекает человекочитаемую ошибку из ответа API.
+    Пытается взять detail/error из JSON, иначе возвращает текст ответа или код статуса.
+    """
     if response is None:
         return "нет ответа"
     try:
@@ -51,6 +54,9 @@ def _extract_response_error(response):
 
 
 def _get_required_token(request, redirect_name):
+    """Достает access token из сессии для защищенных операций.
+    При отсутствии токена пишет сообщение об ошибке и возвращает redirect на указанную страницу.
+    """
     token = request.session.get("access_token")
     if token:
         return token
@@ -59,6 +65,9 @@ def _get_required_token(request, redirect_name):
 
 
 def _is_fuzzy_last_name_match(last_name, query):
+    """Проверяет совпадение фамилии с поисковым запросом с учетом неточных совпадений.
+    Использует прямое вхождение и SequenceMatcher для tolerance к опечаткам.
+    """
     candidate = (last_name or "").strip().lower()
     needle = (query or "").strip().lower()
     if not needle:
@@ -74,6 +83,9 @@ def _is_fuzzy_last_name_match(last_name, query):
 
 
 def _default_employee_form(departments_options):
+    """Возвращает стартовые значения формы сотрудника.
+    Если есть отделы, подставляет первый department_id по умолчанию.
+    """
     return {
         "employee_id": "",
         "first_name": "",
@@ -90,6 +102,9 @@ def _default_employee_form(departments_options):
 
 
 def _resolve_user_scope(request, access_token):
+    """Определяет UI-роль пользователя: admin, manager или employee.
+    Кэширует результат в сессии и возвращает ошибку API, если роль определялась через fallback.
+    """
     cached_scope = request.session.get("ui_user_scope")
     if cached_scope in {"admin", "manager", "employee"}:
         return cached_scope, None
@@ -111,6 +126,9 @@ def _resolve_user_scope(request, access_token):
 
 
 def _load_dashboard_tasks(access_token, scope):
+    """Загружает задачи для дашборда в зависимости от роли пользователя.
+    Для admin берет все задачи, для manager/employee — профильные endpoint’ы.
+    """
     if scope == "admin":
         tasks, error, _ = TasksController.get_all_tasks(access_token=access_token)
         return tasks, error
@@ -120,6 +138,9 @@ def _load_dashboard_tasks(access_token, scope):
 
 
 def _load_tasks_for_scope(request, access_token, scope):
+    """Определяет активный task_scope и набор задач для текущего запроса.
+    Для employee поддерживает переключение между своими задачами и задачами подразделения.
+    """
     task_scope = (request.GET.get("task_scope") or "").strip().lower()
     if scope == "employee" and task_scope == "department":
         return task_scope, TasksController.get_current_tasks(access_token=access_token)
@@ -130,6 +151,9 @@ def _load_tasks_for_scope(request, access_token, scope):
 
 
 def _parse_int(value):
+    """Преобразует значение в целое число без выброса исключения.
+    Возвращает None, если конвертация невозможна.
+    """
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -137,6 +161,9 @@ def _parse_int(value):
 
 
 def _department_field_errors_from_api(api_error):
+    """Маппит текст ошибки API на поля формы подразделения.
+    Возвращает словарь ошибок для name, description или обоих полей.
+    """
     text = (api_error or "").strip()
     lowered = text.lower()
     if not lowered:
@@ -149,6 +176,9 @@ def _department_field_errors_from_api(api_error):
 
 
 def _filter_tasks_by_period(tasks, period):
+    """Фильтрует список задач по текущему месяцу или году.
+    Ориентируется на planned end/start date и пропускает записи с невалидной датой.
+    """
     if period not in {"month", "year"}:
         return tasks
 
@@ -175,6 +205,9 @@ def _filter_tasks_by_period(tasks, period):
 
 
 def _safe_iso_date(raw_value):
+    """Безопасно парсит дату из строки формата ISO с возможным временем.
+    Возвращает date или None, если значение пустое/некорректное.
+    """
     if not raw_value:
         return None
     try:
@@ -189,6 +222,9 @@ def _safe_iso_date(raw_value):
 
 
 def _task_report_date(task_row):
+    """Выбирает базовую дату задачи для отчетов.
+    Приоритет: actual_end_date, затем planned_end_date, затем planned_start_date.
+    """
     return (
         _safe_iso_date(task_row.get("actual_end_date"))
         or _safe_iso_date(task_row.get("planned_end_date"))
@@ -197,10 +233,88 @@ def _task_report_date(task_row):
 
 
 def _is_task_done(task_row):
+    """Проверяет, имеет ли задача статус «Выполнено».
+    Сравнение выполняется регистронезависимо после нормализации строки статуса.
+    """
     return (task_row.get("status") or "").strip().lower() == "выполнено"
 
 
+def _resolve_task_assignment(
+    access_token,
+    scope,
+    assignee_user_id,
+    assignee_name,
+    fallback_assignee_id,
+    fallback_department_id,
+):
+    """Подбирает согласованные assignee_id и department_id задачи по данным сотрудников.
+    Ищет сначала по user_id, затем по ФИО исполнителя; при промахе возвращает fallback-значения.
+    """
+    if scope == "admin":
+        employees, employees_error = EmployeeController.get_employees(access_token=access_token)
+    elif scope == "manager":
+        employees, employees_error = EmployeeController.get_manager_department_employees(access_token=access_token)
+    else:
+        return fallback_assignee_id, fallback_department_id
+    if employees_error:
+        return fallback_assignee_id, fallback_department_id
+
+    target_assignee_id = _parse_int(assignee_user_id)
+    target_assignee_name = (assignee_name or "").strip().lower()
+
+    for row in employees:
+        if not isinstance(row, dict):
+            continue
+        candidate_user_id = _parse_int(row.get("user_id"))
+        candidate_employee_id = _parse_int(row.get("id"))
+        candidate_assignee_id = (
+            candidate_user_id if candidate_user_id is not None else candidate_employee_id
+        )
+        dep_id = _parse_int(row.get("department_id"))
+        if dep_id is None or candidate_assignee_id is None:
+            continue
+
+        if target_assignee_id is not None and target_assignee_id in {
+            candidate_user_id,
+            candidate_employee_id,
+        }:
+            return candidate_assignee_id, dep_id
+
+        if target_assignee_name:
+            full_name = " ".join(
+                part
+                for part in (
+                    row.get("last_name") or "",
+                    row.get("first_name") or "",
+                    row.get("middle_name") or "",
+                )
+                if part
+            ).strip().lower()
+            if full_name and full_name == target_assignee_name:
+                return candidate_assignee_id, dep_id
+
+    return fallback_assignee_id, fallback_department_id
+
+
+def _resolve_task_department_id(access_token, scope, assignee_user_id, fallback_department_id):
+    """Определяет корректный department_id задачи по исполнителю.
+    Использует выборку сотрудников в рамках роли и возвращает fallback при отсутствии совпадения.
+    """
+    _, department_id = _resolve_task_assignment(
+        access_token=access_token,
+        scope=scope,
+        assignee_user_id=assignee_user_id,
+        assignee_name="",
+        fallback_assignee_id=_parse_int(assignee_user_id),
+        fallback_department_id=fallback_department_id,
+    )
+    return department_id
+
+
 def _xlsx_response(workbook, filename):
+    """Упаковывает openpyxl workbook в HTTP-ответ для скачивания.
+    Устанавливает MIME-тип XLSX и заголовок Content-Disposition.
+    """
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
@@ -209,42 +323,63 @@ def _xlsx_response(workbook, filename):
     return response
 
 
-def _build_tasks_report_excel(tasks, department_name, period_label):
+def _build_tasks_report_excel(department_rows, period_label):
+    """Строит Excel-отчет по выполнению задач в разрезе подразделений.
+    Записывает свод по статусам задач и процент выполнения для каждого отдела.
+    """
     wb = Workbook()
     ws = wb.active
-    ws.title = "Выполнение задач"
-    ws.append(["Отчет", "Выполнение задач сотрудниками подразделения"])
-    ws.append(["Подразделение", department_name])
+    ws.title = "Выполнение задач по отделам"
+    ws.append(["Отчет", "Выполнение задач подразделений"])
     ws.append(["Период", period_label])
     ws.append([])
-    ws.append(["Исполнитель", "Всего задач", "Выполнено", "Процент выполнения, %"])
+    ws.append(
+        [
+            "Подразделение",
+            "Всего задач",
+            "К выполнению",
+            "В работе",
+            "На проверке",
+            "Выполнено",
+            "Просрочено",
+            "Процент выполнения, %",
+        ]
+    )
 
-    by_assignee = defaultdict(lambda: {"total": 0, "done": 0})
-    for row in tasks:
+    for row in department_rows:
         if not isinstance(row, dict):
             continue
-        assignee = (row.get("assignee") or "Неизвестно").strip()
-        by_assignee[assignee]["total"] += 1
-        if _is_task_done(row):
-            by_assignee[assignee]["done"] += 1
+        ws.append(
+            [
+                row.get("department") or "Без подразделения",
+                row.get("total") or 0,
+                row.get("planned") or 0,
+                row.get("in_progress") or 0,
+                row.get("review") or 0,
+                row.get("done") or 0,
+                row.get("overdue") or 0,
+                row.get("done_percent") or 0,
+            ]
+        )
 
-    for assignee in sorted(by_assignee.keys(), key=lambda item: item.lower()):
-        total = by_assignee[assignee]["total"]
-        done = by_assignee[assignee]["done"]
-        percent = round((done / total) * 100, 2) if total else 0
-        ws.append([assignee, total, done, percent])
-
-    if not by_assignee:
-        ws.append(["Нет данных", 0, 0, 0])
+    if not department_rows:
+        ws.append(["Нет данных", 0, 0, 0, 0, 0, 0, 0])
 
     ws.column_dimensions["A"].width = 40
-    ws.column_dimensions["B"].width = 14
-    ws.column_dimensions["C"].width = 12
+    ws.column_dimensions["B"].width = 12
+    ws.column_dimensions["C"].width = 14
     ws.column_dimensions["D"].width = 24
+    ws.column_dimensions["E"].width = 14
+    ws.column_dimensions["F"].width = 12
+    ws.column_dimensions["G"].width = 12
+    ws.column_dimensions["H"].width = 24
     return wb
 
 
 def _build_employees_report_excel(employees, department_name_map):
+    """Строит Excel-отчет по численности сотрудников по подразделениям.
+    Группирует сотрудников по отделам и добавляет итоговую строку по всей компании.
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Численность сотрудников"
@@ -274,27 +409,71 @@ def _build_employees_report_excel(employees, department_name_map):
 
 
 def auth(request):
+    """Обрабатывает вход пользователя и сохранение сессионных данных.
+    На успехе сохраняет токен/логин и перенаправляет в дашборд, иначе показывает ошибку.
+    """
+    auth_mode = (request.GET.get("mode") or request.POST.get("mode") or "login").strip().lower()
+    if auth_mode not in {"login", "register"}:
+        auth_mode = "login"
+    context = {"auth_mode": auth_mode, "field_errors": {}}
     if request.method != "POST":
-        return render(request, "auth.html")
+        return render(request, "auth.html", context)
 
-    response = UserController.login_user(
-        username=request.POST.get("username"),
-        password=request.POST.get("password"),
-    )
-    if response is not None and 200 <= response.status_code < 300:
-        try:
-            data = response.json()
-        except Exception:
-            data = {}
-        request.session["is_authenticated"] = True
-        request.session["username"] = (request.POST.get("username") or "").strip()
-        if data.get("access_token"):
-            request.session["access_token"] = data["access_token"]
-        request.session.pop("ui_user_scope", None)
-        return redirect("dashboard")
+    username = (request.POST.get("username") or "").strip()
+    password = (request.POST.get("password") or "").strip()
+    field_errors = {}
 
-    status = response.status_code if response is not None else "нет ответа"
-    context = {"error": f"Ошибка авторизации: {status}"}
+    if not username:
+        context["error"] = "Введите логин"
+        field_errors["username"] = "Поле обязательно."
+        context["field_errors"] = field_errors
+        context["form_username"] = username
+        return render(request, "auth.html", context)
+
+    if not password:
+        context["error"] = "Введите пароль"
+        field_errors["password"] = "Поле обязательно."
+        context["field_errors"] = field_errors
+        context["form_username"] = username
+        return render(request, "auth.html", context)
+
+    if auth_mode == "register":
+        confirm_password = (request.POST.get("confirm_password") or "").strip()
+        if not confirm_password:
+            context["error"] = "Подтвердите пароль."
+            field_errors["confirm_password"] = "Поле обязательно."
+            context["field_errors"] = field_errors
+            context["form_username"] = username
+            return render(request, "auth.html", context)
+        if password != confirm_password:
+            context["error"] = "Пароли не совпадают."
+            field_errors["confirm_password"] = "Пароли не совпадают."
+            context["field_errors"] = field_errors
+            context["form_username"] = username
+            return render(request, "auth.html", context)
+        response = UserController.register_user(username=username, password=password)
+        if response is not None and 200 <= response.status_code < 300:
+            messages.success(request, "Регистрация успешна. Теперь войдите в систему.")
+            return redirect(f"{request.path}?mode=login")
+        status = response.status_code if response is not None else "нет ответа"
+        context["error"] = f"Ошибка регистрации: {status}"
+    else:
+        response = UserController.login_user(username=username, password=password)
+        if response is not None and 200 <= response.status_code < 300:
+            try:
+                data = response.json()
+            except Exception:
+                data = {}
+            request.session["is_authenticated"] = True
+            request.session["username"] = username
+            if data.get("access_token"):
+                request.session["access_token"] = data["access_token"]
+            request.session.pop("ui_user_scope", None)
+            return redirect("dashboard")
+        status = response.status_code if response is not None else "нет ответа"
+        context["error"] = f"Ошибка авторизации: {status}"
+
+    context["form_username"] = username
     error_message = _extract_response_error(response)
     if error_message and error_message != "нет ответа":
         context["error_message"] = error_message
@@ -302,6 +481,9 @@ def auth(request):
 
 
 def dashboard(request):
+    """Рендерит канбан-доску задач с фильтрами и статистикой.
+    Подгружает задачи по роли, применяет фильтры и готовит данные колонок для шаблона.
+    """
     token = request.session.get("access_token")
     scope, scope_error = _resolve_user_scope(request, token)
     task_scope, (tasks, tasks_error) = _load_tasks_for_scope(request, token, scope)
@@ -421,6 +603,9 @@ def dashboard(request):
 
 
 def task_detail(request, task_id):
+    """Показывает карточку задачи и обрабатывает действия в ней.
+    Поддерживает добавление комментария, редактирование и удаление с проверкой прав.
+    """
     token = request.session.get("access_token")
     scope, _ = _resolve_user_scope(request, token)
     task_scope, (tasks, tasks_error) = _load_tasks_for_scope(request, token, scope)
@@ -443,8 +628,20 @@ def task_detail(request, task_id):
     task_creator = (selected.get("creator") or "").strip()
     task_assignee = (selected.get("assignee") or "").strip()
     is_admin = scope == "admin"
+    is_manager = scope == "manager"
+    is_employee = scope == "employee"
     can_comment = is_admin or current_username in {task_creator, task_assignee}
-    can_edit = is_admin or (current_username and current_username == task_creator)
+    can_edit = (
+        is_admin
+        or is_manager
+        or (is_employee and current_username and current_username in {task_creator, task_assignee})
+    )
+    if is_admin:
+        edit_mode = "admin_full"
+    elif is_manager:
+        edit_mode = "manager"
+    else:
+        edit_mode = "limited"
     comment_form_data = {"comment_text": ""}
     comment_field_errors = {}
     comments, comments_error = TasksController.get_task_comments(task_id, access_token=token)
@@ -472,6 +669,7 @@ def task_detail(request, task_id):
                         "task_scope": task_scope,
                         "can_comment": can_comment,
                         "can_edit": can_edit,
+                        "edit_mode": edit_mode,
                         "current_user_scope": scope,
                         "comment_form_data": comment_form_data,
                         "comment_field_errors": comment_field_errors,
@@ -494,26 +692,76 @@ def task_detail(request, task_id):
             status_name = (request.POST.get("status_name") or selected.get("status") or "").strip()
             status_id = STATUS_NAME_TO_ID.get(status_name, selected.get("status_id"))
             payload = {
-                "id": selected.get("id"),
-                "title": (request.POST.get("title") or selected.get("title") or "").strip(),
-                "description": (request.POST.get("description") or selected.get("description") or "").strip(),
-                "creator_id": selected.get("creator_id"),
-                "assignee_id": selected.get("assignee_id"),
-                "department_id": selected.get("department_id"),
                 "status_id": int(status_id) if status_id is not None else None,
-                "priority": (request.POST.get("priority") or selected.get("priority") or "малый").strip(),
-                "planned_start_date": selected.get("planned_start_date"),
-                "planned_end_date": selected.get("planned_end_date"),
                 "actual_start_date": (request.POST.get("actual_start_date") or selected.get("actual_start_date") or ""),
                 "actual_end_date": (request.POST.get("actual_end_date") or selected.get("actual_end_date") or ""),
             }
+            if edit_mode in {"admin_full", "manager"}:
+                payload.update(
+                    {
+                        "title": (request.POST.get("title") or selected.get("title") or "").strip(),
+                        "description": (request.POST.get("description") or selected.get("description") or "").strip(),
+                        "priority": (request.POST.get("priority") or selected.get("priority") or "малый").strip(),
+                    }
+                )
+            if edit_mode == "manager":
+                resolved_assignee_id, resolved_department_id = _resolve_task_assignment(
+                    access_token=token,
+                    scope=scope,
+                    assignee_user_id=selected.get("assignee_id"),
+                    assignee_name=selected.get("assignee"),
+                    fallback_assignee_id=_parse_int(selected.get("assignee_id")),
+                    fallback_department_id=_parse_int(selected.get("department_id")),
+                )
+                
+                if resolved_assignee_id is not None:
+                    payload["assignee_id"] = resolved_assignee_id
+                payload["department_id"] = resolved_department_id
+            if edit_mode == "admin_full":
+                resolved_assignee_id, resolved_department_id = _resolve_task_assignment(
+                    access_token=token,
+                    scope=scope,
+                    assignee_user_id=selected.get("assignee_id"),
+                    assignee_name=selected.get("assignee"),
+                    fallback_assignee_id=_parse_int(selected.get("assignee_id")),
+                    fallback_department_id=_parse_int(selected.get("department_id")),
+                )
+                payload.update(
+                    {
+                        "creator_id": _parse_int(selected.get("creator_id")),
+                        "assignee_id": resolved_assignee_id,
+                        "department_id": resolved_department_id,
+                        "planned_start_date": selected.get("planned_start_date"),
+                        "planned_end_date": selected.get("planned_end_date"),
+                    }
+                )
             response = TasksController.update_task(task_id, payload, access_token=token)
             if response is None:
                 messages.error(request, "Нет связи с API при редактировании задачи.")
             elif 200 <= response.status_code < 300:
                 messages.success(request, "Задача обновлена.")
             else:
-                messages.error(request, f"Ошибка API: {_extract_response_error(response)}")
+                api_error_text = _extract_response_error(response)
+                messages.error(request, f"Ошибка API: {api_error_text}")
+                debug_payload = {
+                    "task_id": task_id,
+                    "scope": scope,
+                    "edit_mode": edit_mode,
+                    "creator_id": payload.get("creator_id"),
+                    "assignee_id": payload.get("assignee_id"),
+                    "department_id": payload.get("department_id"),
+                    "status_id": payload.get("status_id"),
+                    "title": payload.get("title"),
+                    "priority": payload.get("priority"),
+                    "planned_start_date": payload.get("planned_start_date"),
+                    "planned_end_date": payload.get("planned_end_date"),
+                    "actual_start_date": payload.get("actual_start_date"),
+                    "actual_end_date": payload.get("actual_end_date"),
+                }
+                messages.warning(
+                    request,
+                    f"DEBUG PUT /tasks/{task_id} status={response.status_code}: {debug_payload}",
+                )
             return redirect("task_detail", task_id=task_id)
 
         if action == "delete":
@@ -547,6 +795,7 @@ def task_detail(request, task_id):
             "task_scope": task_scope,
             "can_comment": can_comment,
             "can_edit": can_edit,
+            "edit_mode": edit_mode,
             "current_user_scope": scope,
             "comment_form_data": comment_form_data,
             "comment_field_errors": comment_field_errors,
@@ -557,6 +806,9 @@ def task_detail(request, task_id):
 
 @require_POST
 def dashboard_task_status_update(request):
+    """AJAX-обработчик смены колонки задачи на дашборде.
+    Валидирует входные данные, обновляет статус через API и возвращает JSON-результат.
+    """
     token = request.session.get("access_token")
     if not token:
         return JsonResponse({"ok": False, "error": "Нужна авторизация."}, status=401)
@@ -584,6 +836,9 @@ def dashboard_task_status_update(request):
 
 
 def employees(request):
+    """Рендерит страницу сотрудников с группировкой, фильтрами и режимами формы.
+    Загружает сотрудников по роли, применяет поиск/фильтры и подготавливает данные для add/edit.
+    """
     token = request.session.get("access_token")
     scope, scope_error = _resolve_user_scope(request, token)
     if scope == "admin":
@@ -730,6 +985,9 @@ def employees(request):
 
 
 def employee_create(request):
+    """Создает сотрудника из данных POST-формы.
+    Проверяет права и обязательные поля, отправляет payload в API и показывает результат.
+    """
     if request.method != "POST":
         return redirect("employees")
 
@@ -813,6 +1071,9 @@ def employee_create(request):
 
 
 def employee_update(request):
+    """Обновляет данные сотрудника по форме редактирования.
+    Собирает частичный payload, валидирует id/отдел и отправляет изменения в API.
+    """
     if request.method != "POST":
         return redirect("employees")
 
@@ -862,6 +1123,9 @@ def employee_update(request):
 
 
 def employee_delete(request):
+    """Удаляет сотрудника по идентификатору из POST-формы.
+    Выбирает endpoint по роли (admin/manager) и сообщает итог операции пользователю.
+    """
     if request.method != "POST":
         return redirect("employees")
 
@@ -897,6 +1161,9 @@ def employee_delete(request):
 
 
 def _period_label(period):
+    """Преобразует ключ периода фильтра в читаемую подпись.
+    Используется в отчетах и заголовках экспортируемых файлов.
+    """
     if period == "month":
         return "За месяц"
     if period == "year":
@@ -905,6 +1172,9 @@ def _period_label(period):
 
 
 def _build_employee_options(employees):
+    """Строит отсортированные options исполнителей для фильтров/форм.
+    Формирует пары (user_id, ФИО) и исключает записи без user_id.
+    """
     options = []
     for row in employees:
         user_id = row.get("user_id")
@@ -925,10 +1195,14 @@ def _build_employee_options(employees):
 
 
 def _build_monthly_employee_stats(tasks, selected_employee_id, selected_year):
+    """Считает помесячную статистику выполнения задач сотрудника за выбранный год.
+    Возвращает детализацию по месяцам и суммарные значения для графиков.
+    """
     by_month_total = {month: 0 for month in range(1, 13)}
     by_month_done = {month: 0 for month in range(1, 13)}
     for row in tasks:
-        if row.get("assignee_id") != selected_employee_id:
+        assignee_id = _parse_int(row.get("assignee_id"))
+        if assignee_id != selected_employee_id:
             continue
         task_date = _task_report_date(row)
         if task_date is None or task_date.year != selected_year:
@@ -945,13 +1219,17 @@ def _build_monthly_employee_stats(tasks, selected_employee_id, selected_year):
         total = by_month_total[month]
         done = by_month_done[month]
         pending = total - done
+        done_percent = (done / total) * 100 if total else 0
+        pending_percent = (pending / total) * 100 if total else 0
         chart_total_tasks += total
         chart_done_tasks += done
         monthly_stats.append(
             {
                 "month": month_labels[month - 1],
-                "percent": round((done / total) * 100, 2) if total else 0,
-                "pending_percent": round((pending / total) * 100, 2) if total else 0,
+                "percent": round(done_percent, 2),
+                "pending_percent": round(pending_percent, 2),
+                "done_width": f"{done_percent:.2f}",
+                "pending_width": f"{pending_percent:.2f}",
                 "total": total,
                 "done": done,
                 "pending": pending,
@@ -961,6 +1239,9 @@ def _build_monthly_employee_stats(tasks, selected_employee_id, selected_year):
 
 
 def reports(request):
+    """Рендерит страницу отчетов и обрабатывает экспорт в Excel.
+    Готовит срезы по периодам/подразделениям/сотрудникам и агрегированную статистику.
+    """
     token = request.session.get("access_token")
     scope, scope_error = _resolve_user_scope(request, token)
     me_response = UserController.get_me(access_token=token) if token else None
@@ -1068,24 +1349,6 @@ def reports(request):
         elif task_date.year == today.year:
             period_tasks.append(row)
 
-    action = (request.GET.get("action") or "").strip().lower()
-    if action == "download_tasks_excel":
-        selected_dep_name = "Все подразделения"
-        if selected_department_raw:
-            selected_department_id = _parse_int(selected_department_raw)
-            if selected_department_id is None:
-                selected_dep_name = "Подразделение"
-            else:
-                selected_dep_name = department_name_map.get(selected_department_id, "Подразделение")
-        workbook = _build_tasks_report_excel(period_tasks, selected_dep_name, period_label)
-        file_name = f"tasks_report_{selected_period}_{today.isoformat()}.xlsx"
-        return _xlsx_response(workbook, file_name)
-
-    if action == "download_employees_excel":
-        workbook = _build_employees_report_excel(employees, department_name_map)
-        file_name = f"employees_report_{today.isoformat()}.xlsx"
-        return _xlsx_response(workbook, file_name)
-
     department_task_report_map = defaultdict(
         lambda: {
             "department": "Без подразделения",
@@ -1123,6 +1386,27 @@ def reports(request):
         total = row["total"]
         row["done_percent"] = round((row["done"] / total) * 100, 2) if total else 0
         department_task_report.append(row)
+
+    action = (request.GET.get("action") or "").strip().lower()
+    if action == "download_tasks_excel":
+        workbook = _build_tasks_report_excel(department_task_report, period_label)
+        file_name = f"department_tasks_report_{selected_period}_{today.isoformat()}.xlsx"
+        return _xlsx_response(workbook, file_name)
+
+    if action == "download_employees_excel":
+        workbook = _build_employees_report_excel(employees, department_name_map)
+        file_name = f"employees_report_{today.isoformat()}.xlsx"
+        return _xlsx_response(workbook, file_name)
+
+    employees_count_map = defaultdict(int)
+    for row in employees:
+        dep_id = row.get("department_id")
+        dep_name = department_name_map.get(dep_id) if dep_id is not None else None
+        employees_count_map[dep_name or "Без подразделения"] += 1
+    employees_count_rows = [
+        {"department": dep_name, "count": employees_count_map[dep_name]}
+        for dep_name in sorted(employees_count_map.keys(), key=lambda value: value.lower())
+    ]
 
     employee_options = _build_employee_options(employees)
     selected_employee_id = _parse_int(selected_employee_raw)
@@ -1164,6 +1448,8 @@ def reports(request):
             "period_tasks_done_count": sum(1 for row in period_tasks if _is_task_done(row)),
             "period_label": period_label,
             "department_task_report": department_task_report,
+            "employees_count_rows": employees_count_rows,
+            "employees_total_count": sum(row["count"] for row in employees_count_rows),
             "monthly_stats": monthly_stats,
             "selected_employee_name": selected_employee_name,
             "chart_total_tasks": chart_total_tasks,
@@ -1175,6 +1461,9 @@ def reports(request):
 
 
 def admin_departments(request):
+    """Админ-раздел управления подразделениями (создание, редактирование, удаление).
+    Валидирует формы, вызывает API подразделений и возвращает данные для шаблона.
+    """
     token = request.session.get("access_token")
     scope, _ = _resolve_user_scope(request, token)
 
@@ -1264,6 +1553,9 @@ def admin_departments(request):
 
 
 def admin_users(request):
+    """Админ-раздел управления пользователями и созданием учетных записей.
+    Обрабатывает форму создания пользователя и загружает список пользователей из API.
+    """
     token = request.session.get("access_token")
     scope, _ = _resolve_user_scope(request, token)
 
@@ -1338,6 +1630,9 @@ def admin_users(request):
 
 
 def _task_form_context(request):
+    """Собирает контекст для формы создания задачи.
+    Подготавливает списки сотрудников/создателей/отделов и ограничения по роли пользователя.
+    """
     token = request.session.get("access_token")
     scope, _ = _resolve_user_scope(request, token)
     me_response = UserController.get_me(access_token=token) if token else None
@@ -1449,6 +1744,9 @@ def _task_form_context(request):
 
 
 def _task_form_data_from_post(request):
+    """Извлекает и нормализует данные формы создания задачи из POST.
+    Возвращает словарь строковых полей без преобразования типов.
+    """
     return {
         "title": (request.POST.get("title") or "").strip(),
         "description": (request.POST.get("description") or "").strip(),
@@ -1463,6 +1761,9 @@ def _task_form_data_from_post(request):
 
 
 def _render_task_create_with_form_data(request, field_errors=None):
+    """Переотрисовывает форму создания задачи с введенными пользователем значениями.
+    Подмешивает ошибки валидации и фиксирует принудительные поля для роли manager.
+    """
     context = _task_form_context(request)
     posted = _task_form_data_from_post(request)
     if context.get("user_scope") == "manager" and context.get("manager_department_id") is not None:
@@ -1475,6 +1776,9 @@ def _render_task_create_with_form_data(request, field_errors=None):
 
 
 def _task_create_required_errors(scope, form_data):
+    """Проверяет наличие обязательных полей формы создания задачи.
+    Возвращает первое сообщение об ошибке и словарь ошибок полей для UI.
+    """
     required_fields = {
         "title": "Укажите название задачи.",
         "description": "Укажите описание задачи.",
@@ -1495,6 +1799,9 @@ def _task_create_required_errors(scope, form_data):
 
 
 def task_create(request):
+    """Страница создания задач и обработчик отправки формы.
+    Валидирует поля и права, собирает payload для API и возвращает ошибки по соответствующим полям.
+    """
     context = _task_form_context(request)
     scope = context.get("user_scope")
     if scope == "employee":
@@ -1584,3 +1891,18 @@ def task_create(request):
     elif "department" in api_error_lower or "подраздел" in api_error_lower:
         field_errors["department_id"] = api_error
     return _render_task_create_with_form_data(request, field_errors)
+
+
+def no_access(request):
+    """Показывает страницу отказа в доступе для неавторизованных пользователей.
+    Используется как целевая страница редиректа при отсутствии активного токена.
+    """
+    return render(request, "no_access.html")
+
+
+def logout_view(request):
+    """Очищает пользовательскую сессию и переводит на страницу входа.
+    Используется для корректного завершения сеанса и удаления access token.
+    """
+    request.session.flush()
+    return redirect("auth")

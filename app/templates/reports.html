@@ -88,15 +88,38 @@
 
     <section class="card reports-card-side">
         <h3>Отчет по численности сотрудников</h3>
-        <p class="muted">Общее количество сотрудников и распределение по подразделениям в Excel.</p>
+        <p class="muted">Распределение по подразделениям можно просмотреть на странице и выгрузить в Excel.</p>
         <form method="get" action="{% url 'reports' %}" class="toolbar-row">
             <button class="btn btn--secondary" type="submit" name="action" value="download_employees_excel">Скачать Excel</button>
         </form>
+        <p class="muted" style="margin-top: 8px;">Всего сотрудников: <strong>{{ employees_total_count }}</strong>.</p>
+        <div class="table-wrap" style="margin-top: 8px;">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Подразделение</th>
+                        <th>Количество сотрудников</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in employees_count_rows %}
+                    <tr>
+                        <td>{{ row.department }}</td>
+                        <td>{{ row.count }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="2">Нет данных по сотрудникам.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </section>
 
-    <section class="card chart-placeholder">
+    <section class="card chart-placeholder" id="employee-chart">
         <h3>Диаграмма выполнения задач сотрудника (помесячно)</h3>
-        <form method="get" action="{% url 'reports' %}" class="toolbar-row">
+        <form method="get" action="{% url 'reports' %}#employee-chart" class="toolbar-row">
             <select class="input input--select" name="employee_id">
                 <option value="">Выберите сотрудника</option>
                 {% for emp_id, emp_name in employee_options %}
@@ -123,8 +146,8 @@
             <div class="report-bars__row">
                 <div class="report-bars__label">{{ row.month }}</div>
                 <div class="report-bars__track">
-                    <div class="report-bars__fill report-bars__fill--done" style="width: {{ row.percent }}%;"></div>
-                    <div class="report-bars__fill report-bars__fill--pending" style="width: {{ row.pending_percent }}%;"></div>
+                    <div class="report-bars__fill report-bars__fill--done" style="width: {{ row.done_width }}%;"></div>
+                    <div class="report-bars__fill report-bars__fill--pending" style="width: {{ row.pending_width }}%;"></div>
                 </div>
                 <div class="report-bars__value">{{ row.percent }}% ({{ row.done }}/{{ row.total }}, невыполнено: {{ row.pending }})</div>
             </div>

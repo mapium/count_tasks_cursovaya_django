@@ -12,7 +12,8 @@ class DepartmentController:
     @staticmethod
     def get_department_name_map():
         """
-        Возвращает ({id: название}, None) или ({}, сообщение_об_ошибке).
+        Постранично загружает подразделения и строит словарь `id -> name`.
+        Возвращает пару: карта подразделений и текст ошибки, если API недоступно/некорректно.
         """
         name_by_id = {}
         page = 1
@@ -56,6 +57,9 @@ class DepartmentController:
 
     @staticmethod
     def get_departments(access_token=None):
+        """Получает первую страницу списка подразделений.
+        Возвращает `(список_подразделений, ошибка)` с текстом ошибки при сбоях API/JSON.
+        """
         try:
             response = BaseController.request(
                 "get",
@@ -76,6 +80,9 @@ class DepartmentController:
 
     @staticmethod
     def create_department(payload, access_token=None):
+        """Создает подразделение через `POST /departments`.
+        При ошибке соединения возвращает `None`, иначе raw ответ API.
+        """
         try:
             return BaseController.request(
                 "post",
@@ -88,6 +95,9 @@ class DepartmentController:
 
     @staticmethod
     def update_department(department_id, payload, access_token=None):
+        """Обновляет подразделение по идентификатору через `PUT /departments/{id}`.
+        Возвращает `None` при сетевой ошибке или некорректном `department_id`.
+        """
         try:
             return BaseController.request(
                 "put",
@@ -100,6 +110,9 @@ class DepartmentController:
 
     @staticmethod
     def delete_department(department_id, access_token=None):
+        """Удаляет подразделение через `DELETE /departments/{id}`.
+        При ошибке запроса или неверном id возвращает `None`.
+        """
         try:
             return BaseController.request(
                 "delete",

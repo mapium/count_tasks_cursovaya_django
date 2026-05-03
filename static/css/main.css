@@ -20,7 +20,7 @@
 
 body {
     margin: 0;
-    font-family: "Inter", sans-serif;
+    font-family: "Onest", sans-serif;
     color: var(--text);
     background: var(--bg);
 }
@@ -54,6 +54,10 @@ body {
     display: grid;
     place-items: center;
     font-weight: 800;
+}
+
+.brand__logo img {
+    filter: invert(100%); /* Полная инверсия */
 }
 
 .brand__text h1 {

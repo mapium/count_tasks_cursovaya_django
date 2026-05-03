@@ -10,6 +10,9 @@ class BaseController:
 
     @classmethod
     def build_url(cls, path: str) -> str:
+        """Собирает полный URL API из BASE_URL, API_PREFIX и переданного пути.
+        Нормализует слеши, чтобы избежать дублирования разделителей.
+        """
         base = settings.BASE_URL.rstrip("/")
         prefix = str(cls.API_PREFIX).strip("/")
         clean_path = path.strip("/")
@@ -19,6 +22,9 @@ class BaseController:
 
     @staticmethod
     def build_headers(access_token=None, content_type: str = "application/json"):
+        """Формирует заголовки запроса с нужным Content-Type.
+        Добавляет Bearer Authorization, если передан access token.
+        """
         headers = {"Content-Type": content_type}
         if access_token:
             headers["Authorization"] = f"Bearer {access_token}"
@@ -26,6 +32,9 @@ class BaseController:
 
     @classmethod
     def request(cls, method: str, path: str, **kwargs):
+        """Выполняет HTTP-запрос к API через `requests.request`.
+        Автоматически подставляет полный URL и таймаут из настроек контроллера.
+        """
         return requests.request(
             method=method,
             url=cls.build_url(path),
