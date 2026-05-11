@@ -10,16 +10,18 @@
 
 
 ### Запуск
-
+```bash
 .venv\Scripts\Activate.ps1
+```
+```bash
 pip install -r requirements.txt
-python manage.py migrate
+```
+```bash
 python manage.py runserver
-
+```
 После запуска:
 
 - веб-приложение: [http://127.0.0.1:8000/auth/](http://127.0.0.1:8000/auth/)
-- страница без доступа: [http://127.0.0.1:8000/no-access/](http://127.0.0.1:8000/no-access/)
 
 ## Важно
 
