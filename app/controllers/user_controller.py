@@ -69,6 +69,47 @@ class UserController:
         )
 
     @staticmethod
+    def change_my_password(old_password: str, new_password: str, access_token=None):
+        payload = {
+            "old_password": old_password,
+            "new_password": new_password,
+        }
+        return BaseController.request(
+            "post",
+            "users/me/change-password",
+            data=payload,
+            headers=BaseController.build_headers(
+                access_token=access_token,
+                content_type="application/x-www-form-urlencoded",
+            ),
+        )
+
+    @staticmethod
+    def update_user_as_admin(user_id: int, username: str, role_id: int, password: str = "", access_token=None):
+        payload = {
+            "username": username,
+            "role_id": str(role_id),
+            "password": password or "",
+        }
+        return BaseController.request(
+            "put",
+            f"users/{int(user_id)}",
+            data=payload,
+            headers=BaseController.build_headers(
+                access_token=access_token,
+                content_type="application/x-www-form-urlencoded",
+            ),
+        )
+
+    @staticmethod
+    def delete_user_as_admin(user_id: int, access_token=None):
+        return BaseController.request(
+            "delete",
+            f"users/{int(user_id)}",
+            headers=BaseController.build_headers(access_token=access_token),
+        )
+
+    @staticmethod
     def register_user(username: str, password: str):
         """Регистрирует обычного пользователя через публичный endpoint API.
         Пытается отправить form-urlencoded payload в стандартные пути регистрации.

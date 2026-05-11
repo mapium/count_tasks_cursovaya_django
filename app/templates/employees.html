@@ -53,6 +53,18 @@
     >
         {% csrf_token %}
         <input type="hidden" name="employee_id" value="{{ form_initial.employee_id }}">
+        <label class="field field--full">
+            <span>Привязанный пользователь</span>
+            <select class="input input--select{% if field_errors.user_id %} input--error{% endif %}" name="user_id">
+                <option value="">Не выбран</option>
+                {% for uid, uname in users_options %}
+                <option value="{{ uid }}"{% if form_initial.user_id == uid|stringformat:"s" %} selected{% endif %}>{{ uname }}</option>
+                {% endfor %}
+            </select>
+            {% if field_errors.user_id %}<small class="field-error">{{ field_errors.user_id }}</small>{% endif %}
+            <small class="muted">Доступны только пользователи, у которых еще нет привязанного сотрудника.</small>
+            {% if users_error %}<small class="field-error">{{ users_error }}</small>{% endif %}
+        </label>
 
         <label class="field">
             <span>Фамилия</span>

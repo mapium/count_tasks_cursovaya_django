@@ -81,7 +81,6 @@
                 <option value="in_progress"{% if form_data.status == "in_progress" %} selected{% endif %}>В работе</option>
                 <option value="review"{% if form_data.status == "review" %} selected{% endif %}>На проверке</option>
                 <option value="done"{% if form_data.status == "done" %} selected{% endif %}>Выполнено</option>
-                <option value="overdue"{% if form_data.status == "overdue" %} selected{% endif %}>Просрочено</option>
             </select>
             {% if field_errors.status %}<small class="field-error">{{ field_errors.status }}</small>{% endif %}
         </label>

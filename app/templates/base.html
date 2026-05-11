@@ -52,6 +52,7 @@
             <div class="sidebar__footer">
                 <p class="muted">Пользователь: <strong>{{ current_username }}</strong></p>
                 <p class="muted">Роль: <strong id="roleBadge">{{ current_role_label }}</strong></p>
+                <a class="btn btn--ghost btn--block  logout--btn" href="{% url 'profile_change_password' %}">Сменить пароль</a>
                 <a class="btn btn--ghost btn--block logout--btn" href="{% url 'logout' %}">Выйти</a>
             </div>
         </aside>

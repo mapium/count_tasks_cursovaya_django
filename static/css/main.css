@@ -93,7 +93,7 @@ body {
 .sidebar__footer {
     margin-top: auto;
     position: sticky;
-    bottom: 0;
+    bottom: 10px;
 }
 
 .main {
@@ -236,14 +236,9 @@ body {
     border: 1px solid #fecaca;
 }
 .logout--btn {
-    margin: 10px 0;
+    background: var(--border);
+    color: var(--text);
 }
-.btn--ghost {
-    background: transparent;
-    border: 1px solid rgba(203, 213, 225, 0.4);
-    color: #fff;
-}
-
 .kanban {
     display: grid;
     grid-template-columns: repeat(4, minmax(240px, 1fr));
@@ -594,6 +589,44 @@ body {
 .table th {
     color: var(--muted);
     font-weight: 600;
+}
+
+.table--admin-users {
+    table-layout: fixed;
+}
+
+.table--admin-users th:nth-child(1),
+.table--admin-users td:nth-child(1) {
+    width: 5%;
+}
+
+.table--admin-users th:nth-child(2),
+.table--admin-users td:nth-child(2) {
+    width: 30%;
+}
+
+.table--admin-users th:nth-child(3),
+.table--admin-users td:nth-child(3) {
+    width: 5%;
+}
+
+.table--admin-users th:nth-child(4),
+.table--admin-users td:nth-child(4) {
+    width: 60%;
+}
+
+.admin-user-actions-cell {
+    vertical-align: top;
+}
+
+.admin-user-actions-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.admin-user-actions-bar .btn {
+    margin: 0;
 }
 
 .auth-layout {

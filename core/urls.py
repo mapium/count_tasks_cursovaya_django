@@ -22,6 +22,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('auth/', views.auth, name='auth'),
     path('logout/', views.logout_view, name='logout'),
+    path('profile/change-password/', views.profile_change_password, name='profile_change_password'),
     path('no-access/', views.no_access, name='no_access'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('dashboard/tasks/<int:task_id>/', views.task_detail, name='task_detail'),

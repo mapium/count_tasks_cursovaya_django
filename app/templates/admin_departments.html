@@ -27,6 +27,15 @@
             <textarea class="input textarea{% if field_errors.description %} input--error{% endif %}" name="description" placeholder="Краткое описание" required>{{ department_form_data.description|default:'' }}</textarea>
             {% if field_errors.description %}<small class="field-error">{{ field_errors.description }}</small>{% endif %}
         </label>
+        <label class="field" style="max-width: 360px;">
+            <span>Привязать менеджера</span>
+            <select class="input input--select" name="manager_id">
+                <option value="">Не выбран</option>
+                {% for manager_id, manager_name in manager_options %}
+                <option value="{{ manager_id }}"{% if department_form_data.manager_id == manager_id|stringformat:"s" %} selected{% endif %}>{{ manager_name }}</option>
+                {% endfor %}
+            </select>
+        </label>
         <div class="field field--full">
             <button class="btn btn--primary" type="submit">Создать подразделение</button>
         </div>
@@ -62,6 +71,19 @@
             <span>Описание</span>
             <textarea class="input textarea{% if edit_department_id == dep.id|stringformat:'s' and update_field_errors.description %} input--error{% endif %}" name="description" required>{% if edit_department_id == dep.id|stringformat:'s' %}{{ update_form_data.description|default:'' }}{% else %}{{ dep.description|default:'' }}{% endif %}</textarea>
             {% if edit_department_id == dep.id|stringformat:'s' and update_field_errors.description %}<small class="field-error">{{ update_field_errors.description }}</small>{% endif %}
+        </label>
+        <label class="field" style="max-width: 360px;">
+            <span>Привязать менеджера</span>
+            <select class="input input--select" name="manager_id">
+                {% if dep.department_manager_id %}
+                <option value="{{ dep.department_manager_id }}" selected>Текущий менеджер ({{ dep.department_manager_name|default:"manager" }})</option>
+                {% else %}
+                <option value="" selected>Не выбран</option>
+                {% endif %}
+                {% for manager_id, manager_name in manager_options %}
+                <option value="{{ manager_id }}">{{ manager_name }}</option>
+                {% endfor %}
+            </select>
         </label>
         <div class="field field--full toolbar-row">
             <button class="btn btn--secondary" type="submit">Сохранить изменения</button>
